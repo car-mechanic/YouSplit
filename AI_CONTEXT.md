@@ -28,7 +28,7 @@ Ollama-Modell, es verlässt kein Bon-Bild das eigene System / den eigenen Server
 | **Frontend**   | React 19 + **TypeScript**, Vite, **Tailwind CSS v4** (via `@tailwindcss/vite`), `react-router-dom`, `lucide-react`, **`recharts`** (Charts, Roadmap 2.0 #2) |
 | **Backend**    | Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.0, Pillow (Bildverkleinerung), httpx |
 | **Datenbank**  | PostgreSQL 17 (`postgres:17-alpine`)                                          |
-| **KI / OCR**   | Lokales **Ollama**, Modell **`qwen2.5vl:3b`** (Vision), angesprochen über `/api/chat` |
+| **KI / OCR**   | Lokales **Ollama**, Modell **`qwen3.5:2b`** (Vision, **seit 2026-10-02 im Test**; vorher `qwen2.5vl:3b`), angesprochen über `/api/chat` |
 | **Wechselkurse** | **Frankfurter-API** (Key-los, `frankfurter.app` → `.dev`) via `httpx` — Multi-Currency (Roadmap 2.0 #3) |
 | **Orchestrierung** | Docker Compose (4 Services: `frontend`, `backend`, `db`, `ollama`)       |
 
@@ -116,7 +116,7 @@ FastAPI Backend (:8000)  ──SQLAlchemy──►  PostgreSQL (db:5432)
       │
       │  Bon-Bild als Base64 (POST /api/chat)
       ▼
-Ollama (:11434, qwen2.5vl:3b)
+Ollama (:11434, qwen3.5:2b)
 ```
 
 - **Frontend → Backend:** Ausschließlich über `frontend/src/api.ts`. Kein
@@ -281,7 +281,7 @@ mit sinnvollen Defaults.
 | ------------------------- | ------------------------------- | ------------------------------------------ |
 | `DATABASE_URL`            | `postgresql://yousplit:...@db` | DB-Verbindung                              |
 | `OLLAMA_URL`              | `http://ollama:11434`           | Ollama-Endpoint                            |
-| `OLLAMA_MODEL`            | `qwen2.5vl:3b`                  | Vision-Modell für OCR                      |
+| `OLLAMA_MODEL`            | `qwen3.5:2b`                    | Vision-Modell für OCR (Test; Alternativen `qwen3.5:4b`, `qwen2.5vl:3b`) |
 | `OLLAMA_TIMEOUT_SECONDS`  | `480` (Compose) / `300` (Code)  | Timeout — CPU-Inferenz dauert 2–4 Min      |
 | `OLLAMA_PULL_TIMEOUT_SECONDS` | `3600`                      | Timeout des automatischen Modell-Downloads (2026-09-25) |
 | `LOG_LEVEL`               | `INFO`                          | Backend-Log-Level (`DEBUG` zeigt z. B. rohe KI-Antworten) |
@@ -897,6 +897,15 @@ fortführen:
   bricht laufende Scans ab → Job wird `failed`, Bild ist weg, Nutzer muss neu
   scannen); die (kurzen) DB-Operationen laufen synchron im Event-Loop — bei der
   aktuellen Last unkritisch. Bei mehr Last: echte Queue (z. B. arq/Celery).
+- **Modellwechsel auf `qwen3.5:2b` (2026-10-02, Test, noch nicht an echten Bons
+  verifiziert):** Es gibt kein neueres Qwen-Vision-Modell mit 3B — Qwen3.8/3.6
+  existieren nur als 27b+, bei Qwen3.5 und Qwen3-VL ist 2b/4b das Naheliegende.
+  Qwen3.x ist ein „Denk“-Modell → der Chat-Aufruf sendet `"think": false`, sonst
+  rechnet es auf CPU minutenlang vor der Antwort (und stört das reine JSON).
+  Qwen3.5 braucht eine aktuelle Ollama-Version (`docker compose pull ollama`).
+  **Offen:** Der `RECEIPT_PROMPT` wurde für `qwen2.5vl` abgestimmt — bei Fehlern
+  (Betrag/Datum) zuerst `qwen3.5:4b` probieren, dann den Prompt prüfen. Der
+  Auto-Pull lädt das neue Modell beim nächsten Backend-Start selbst (~2,7 GB).
 - **`docker compose down -v` löscht auch das Ollama-Modell** (Volume
   `ollama_models`). Seit 2026-09-25 lädt das Backend es automatisch nach (~3 GB,
   dauert) — für einen reinen DB-Reset besser gezielt nur das Postgres-Volume
@@ -946,7 +955,7 @@ docker compose up --build
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 
 # Beim ERSTEN Mal: Vision-Modell in Ollama laden (falls nicht vorhanden)
-docker compose exec ollama ollama pull qwen2.5vl:3b
+docker compose exec ollama ollama pull qwen3.5:2b
 
 # Logs eines Dienstes verfolgen
 docker compose logs -f backend
@@ -966,7 +975,7 @@ docker compose logs -f backend
 
 ---
 
-_Zuletzt aktualisiert: 2026-10-02 (Duplikats-Erkennung beim Bon-Scan: Geschäft + Betrag + Datum, Job-Status `duplicate`, `POST …/confirm`, `duplicates.py`, Auto-Spalte `receipt_jobs.result`; 13 neue Tests). Vorher: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
+_Zuletzt aktualisiert: 2026-10-02 (Vision-Modell-Test `qwen3.5:2b` statt `qwen2.5vl:3b`, `think: false`; Duplikats-Erkennung beim Bon-Scan: Geschäft + Betrag + Datum, Job-Status `duplicate`, `POST …/confirm`, `duplicates.py`, Auto-Spalte `receipt_jobs.result`; 13 neue Tests). Vorher: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
 `404 model not found` nach `down -v`; Modell-Auto-Pull `ensure_model` beim Start/
 vor Scan/bei 404; Status-Rückmeldung `ReceiptJob` + Endpunkte `GET/DELETE
 …/receipt-jobs` + Frontend-Polling `useReceiptJobs`/`ReceiptJobsPanel`; zentrales

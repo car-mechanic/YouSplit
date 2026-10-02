@@ -12,7 +12,10 @@ from pydantic import ValidationError
 from schemas import ReceiptAnalysis
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5vl:3b")
+# Seit 2026-10-02 Test mit qwen3.5:2b (neuere Generation, ~2,7 GB). Faellt die
+# Erkennung schlechter aus: ``OLLAMA_MODEL`` auf ``qwen3.5:4b`` (~3,4 GB) oder
+# zurueck auf ``qwen2.5vl:3b`` setzen — nur diese eine Einstellung aendert sich.
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
 
 # Beim ersten Request nach einem (Neu-)Start muss Ollama das ~8-GB-Modell
 # erst in den RAM laden — auf CPU-Hardware dauert Laden + Analyse zusammen
@@ -264,6 +267,11 @@ async def analyze_receipt(image_bytes: bytes) -> ReceiptAnalysis:
         # Zwingt Ollama, syntaktisch valides JSON auszugeben
         "format": "json",
         "stream": False,
+        # Qwen3.x denkt standardmaessig erst laenger nach, bevor es antwortet —
+        # fuer reines Ablesen eines Bons nur verschwendete CPU-Minuten (und das
+        # Denken kann die reine JSON-Antwort stoeren). Fuer Modelle ohne
+        # Denkmodus (z. B. qwen2.5vl) ist ``false`` unschaedlich.
+        "think": False,
         "options": {
             # Bilder zaehlen als Tokens (proportional zur Pixelflaeche).
             # Hohe Bon-Screenshots sprengen Ollamas Default von 4096.
