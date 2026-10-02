@@ -50,3 +50,9 @@ def ensure_schema_updates() -> None:
         connection.execute(
             text("ALTER TABLE receipt_jobs ADD COLUMN IF NOT EXISTS result JSON")
         )
+        connection.execute(
+            text(
+                "ALTER TABLE receipt_jobs ADD COLUMN IF NOT EXISTS "
+                "progress INTEGER NOT NULL DEFAULT 0"
+            )
+        )

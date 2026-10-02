@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { AlertTriangle, CopyCheck, Loader2, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertTriangle, CopyCheck, Loader2, ScanLine, X } from "lucide-react";
 import type { ReceiptJob } from "../api";
+import { estimateProgress, stageLabel } from "../receiptProgress";
 
 interface ReceiptJobsPanelProps {
   jobs: ReceiptJob[];
@@ -19,10 +20,76 @@ function formatTime(iso: string): string {
   }).format(date);
 }
 
+/** Sekunden seit dem Einhängen der Komponente (aktualisiert 4× pro Sekunde). */
+function useElapsedSeconds(): number {
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(startedAt);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+  return (now - startedAt) / 1000;
+}
+
+interface ProcessingCardProps {
+  job: ReceiptJob;
+  label: string;
+  meta: string;
+}
+
+/**
+ * Laufender Scan mit Fortschrittsbalken. Das Backend meldet Meilensteine
+ * (`job.progress`), dazwischen läuft der Balken geschätzt weiter (siehe
+ * `receiptProgress.ts`). Wird die Karte pro Meilenstein neu eingehängt
+ * (`key` im Aufrufer), startet die Schätzung automatisch beim neuen Wert.
+ * Beim einmaligen Modell-Download (`job.detail`) ist der Fortschritt nicht
+ * schätzbar → pulsierender Balken mit dem Hinweistext.
+ */
+function ProcessingCard({ job, label, meta }: ProcessingCardProps) {
+  const elapsed = useElapsedSeconds();
+  const indeterminate = job.detail !== null;
+  const percent = Math.floor(
+    estimateProgress(job.progress, elapsed, job.estimated_seconds),
+  );
+
+  return (
+    <li className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+      <div className="flex items-start gap-3">
+        <ScanLine className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">{label} wird verarbeitet …</p>
+          <p className="mt-0.5">
+            {indeterminate ? job.detail : stageLabel(job.progress)}
+          </p>
+        </div>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={`Fortschritt: ${label}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={indeterminate ? undefined : percent}
+        className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-200/70"
+      >
+        <div
+          className={`h-full rounded-full bg-emerald-600 transition-[width] duration-300 ease-out ${
+            indeterminate ? "w-full animate-pulse" : ""
+          }`}
+          style={indeterminate ? undefined : { width: `${percent}%` }}
+        />
+      </div>
+      <p className="mt-1.5 flex justify-between gap-3 text-xs text-emerald-700/70">
+        <span>{meta}</span>
+        {!indeterminate && <span>ca. {percent} %</span>}
+      </p>
+    </li>
+  );
+}
+
 /**
  * Status der Bon-Scans im Hintergrund (Bugfix 2026-09-25).
  *
- * Zeigt laufende Scans mit Spinner (plus optionalem Fortschritts-Hinweis, etwa
+ * Zeigt laufende Scans mit Fortschrittsbalken (plus optionalem Hinweis, etwa
  * beim einmaligen Modell-Download), fehlgeschlagene Scans mit Ursache und
  * „Verwerfen"-Button sowie **doppelte Bons** (gleiches Geschäft, gleicher Betrag,
  * gleiches Datum) mit „Verwerfen" und „Trotzdem hinzufügen". Erfolgreiche Scans
@@ -138,22 +205,12 @@ function ReceiptJobsPanel({
         }
 
         return (
-          <li
-            key={job.id}
-            className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-          >
-            <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-emerald-600" />
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">
-                {label} wird im Hintergrund verarbeitet …
-              </p>
-              <p className="mt-0.5">
-                {job.detail ??
-                  "Die Ausgabe erscheint automatisch in der Liste. Du kannst die App auch schließen."}
-              </p>
-              <p className="mt-1 text-xs text-emerald-700/70">{meta}</p>
-            </div>
-          </li>
+          <ProcessingCard
+            key={`${job.id}:${job.progress}`}
+            job={job}
+            label={label}
+            meta={meta}
+          />
         );
       })}
     </ul>

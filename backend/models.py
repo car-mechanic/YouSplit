@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, String, func, text
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -140,6 +140,12 @@ class ReceiptJob(Base):
     # Original-Dateiname, damit der Nutzer fehlgeschlagene Bons zuordnen kann
     filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="processing")
+    # Fortschritt 0–100 (Meilensteine, siehe ``receipt_jobs.PROGRESS_*``). Die
+    # Feinschaetzung zwischen den Meilensteinen macht das Frontend aus der Zeit.
+    # Nachtraeglich ergaenzte Spalte → ``database.ensure_schema_updates``.
+    progress: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
     detail: Mapped[str | None] = mapped_column(String(300), nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Bewusst ohne FK: wird die Ausgabe spaeter geloescht, bleibt der Job gueltig

@@ -203,7 +203,11 @@ async def _process_receipt_in_background(
             await ensure_model()
             receipt_jobs.set_detail(job_id, None)
 
+        receipt_jobs.set_progress(job_id, receipt_jobs.PROGRESS_ANALYZING)
+        analysis_started = time.monotonic()
         analysis = await analyze_receipt(image_bytes)
+        receipt_jobs.record_analysis_duration(time.monotonic() - analysis_started)
+        receipt_jobs.set_progress(job_id, receipt_jobs.PROGRESS_ANALYZED)
         logger.info(
             "Job %s: erkannt '%s' %.2f %s, Kategorie %s, Datum %s",
             job_id,
@@ -222,7 +226,9 @@ async def _process_receipt_in_background(
                 job_id, duplicate_message, analysis.model_dump(mode="json")
             )
             return
+        receipt_jobs.set_progress(job_id, receipt_jobs.PROGRESS_CHECKED)
         rate = await get_exchange_rate(analysis.currency)
+        receipt_jobs.set_progress(job_id, receipt_jobs.PROGRESS_SAVING)
         expense_id = _insert_scanned_expense(list_id, payer_name, analysis, rate)
     except ReceiptAnalysisError as exc:
         logger.error("Job %s: KI-Analyse fehlgeschlagen: %s", job_id, exc)
@@ -484,6 +490,7 @@ async def upload_receipt(
         payer_name=payer_name,
         filename=receipt.filename[:255] if receipt.filename else None,
         status=receipt_jobs.STATUS_PROCESSING,
+        progress=receipt_jobs.PROGRESS_ACCEPTED,
     )
     db.add(job)
     db.commit()
@@ -506,7 +513,7 @@ async def upload_receipt(
 def list_receipt_jobs(
     list_id: uuid.UUID,
     db: Session = Depends(get_db),
-) -> list[models.ReceiptJob]:
+) -> list[schemas.ReceiptJobResponse]:
     """Alle noch nicht quittierten Bon-Scans der Liste (neueste zuerst).
 
     Das Frontend pollt diesen Endpunkt, solange ein Job ``processing`` ist.
@@ -514,12 +521,20 @@ def list_receipt_jobs(
     ``failed``-Jobs, sobald der Nutzer die Fehlermeldung verwirft.
     """
     _get_list_or_404(db, list_id)
-    return (
+    jobs = (
         db.query(models.ReceiptJob)
         .filter(models.ReceiptJob.list_id == list_id)
         .order_by(models.ReceiptJob.created_at.desc())
         .all()
     )
+    # Erwartete Analyse-Dauer fuer die Fortschrittsanzeige an jeden Job haengen
+    estimate = receipt_jobs.expected_analysis_seconds()
+    return [
+        schemas.ReceiptJobResponse.model_validate(job).model_copy(
+            update={"estimated_seconds": estimate}
+        )
+        for job in jobs
+    ]
 
 
 @router.post(

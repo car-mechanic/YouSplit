@@ -347,6 +347,11 @@ class ReceiptJobResponse(BaseModel):
     payer_name: str
     filename: str | None = None
     status: str  # "processing" | "done" | "failed" | "duplicate"
+    # Fortschritt 0–100 in Meilensteinen (siehe receipt_jobs.PROGRESS_*)
+    progress: int = 0
+    # Erwartete Dauer der KI-Analyse in Sekunden (Durchschnitt der letzten Scans);
+    # das Frontend schaetzt damit den Fortschritt zwischen zwei Meilensteinen.
+    estimated_seconds: int | None = None
     detail: str | None = None
     error: str | None = None
     expense_id: uuid.UUID | None = None

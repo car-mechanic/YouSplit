@@ -77,6 +77,7 @@ YouSplit/
       ├─ recentLists.ts        # Zuletzt besuchte Listen im localStorage (Startseite, Roadmap 3.0 #1)
       ├─ payerStorage.ts       # localStorage-Schlüssel des gemerkten Zahlers je Liste (ExpenseForm + BankStatementView)
       ├─ useReceiptJobs.ts     # Hook: pollt Bon-Scan-Status, lädt Liste bei "done" neu (2026-09-25)
+      ├─ receiptProgress.ts    # Fortschritts-Schätzung zwischen den Backend-Meilensteinen (rein, 2026-10-02)
       ├─ pages/
       │  ├─ Home.tsx           # Startseite/Dashboard: CTA "Neue Liste" (Modal) + Grid zuletzt besuchter Listen (Roadmap 3.0 #1)
       │  └─ ListView.tsx       # Orchestrator: lädt Liste + Kassensturz, koordiniert Edit/Delete, merkt Besuch
@@ -89,7 +90,7 @@ YouSplit/
          ├─ CurrencySelect.tsx # Währungs-Dropdown: Hauptwährungen + "Mehr…" klappt EU-Währungen auf (Roadmap 3.0 #2)
          ├─ SettlementCard.tsx # Kassensturz-UI für N Personen (zeigt Settlement vom Backend)
          ├─ ExpenseForm.tsx    # "Ausgabe hinzufügen"-Feature (Formular, Zahler-Dropdown, Scan, Duplikat, Splitter)
-         ├─ ReceiptJobsPanel.tsx # Status laufender/fehlgeschlagener/doppelter Bon-Scans (Spinner, Fehler + Verwerfen, Duplikat + „Trotzdem hinzufügen“)
+         ├─ ReceiptJobsPanel.tsx # Status laufender/fehlgeschlagener/doppelter Bon-Scans (Fortschrittsbalken, Fehler + Verwerfen, Duplikat + „Trotzdem hinzufügen“)
          ├─ ExpenseList.tsx    # Abschnitt "Bisherige Ausgaben" (Sortierung, Empty State)
          ├─ ExpenseListItem.tsx # Eine Ausgabe als Card (Meta, Datum, Betrag, Aktionen)
          ├─ DatePicker.tsx     # Eigener Kalender-Picker (emerald) fürs Ausgabendatum
@@ -487,8 +488,23 @@ das Frontend nach der `202` nichts mehr erfuhr.
   `processing` ist. `done` → Liste neu laden (`getList`) + Job per DELETE
   quittieren. `failed` und `duplicate` bleiben sichtbar, bis der Nutzer sie
   verwirft (`duplicate` alternativ: `confirmDuplicate` → `POST …/confirm`).
-  `ReceiptJobsPanel` (unter dem Formular im Ausgaben-Tab) zeigt Spinner +
-  Hinweis bzw. rote Fehler-Card mit X. `ExpenseForm` zeigt nur noch kurz „Beleg
+- **Fortschrittsbalken (2026-10-02):** Ollama meldet während der KI-Analyse keinen
+  echten Fortschritt (ein einziger Aufruf, `stream: false`). Deshalb: das Backend
+  schreibt **Meilensteine** in `ReceiptJob.progress` (`receipt_jobs.PROGRESS_*`:
+  5 angenommen → 10 KI liest → 85 KI fertig → 90 kein Duplikat → 95 speichert →
+  100 fertig) und liefert `estimated_seconds` = gleitender Durchschnitt der
+  letzten Analyse-Dauern (`record_analysis_duration`, nur im Speicher, Startwert
+  60 s; `GET …/receipt-jobs` hängt ihn an jeden Job). Zwischen zwei Meilensteinen
+  **schätzt das Frontend** (`receiptProgress.estimateProgress`: abflachende Kurve,
+  ~95 % der Strecke nach der erwarteten Dauer, nie über den nächsten Meilenstein).
+  `ProcessingCard` hängt pro Meilenstein neu ein (`key=job.id:progress`), sodass
+  die Schätzung bei jedem neuen Wert von vorn beginnt. Der Balken zeigt „ca. X %“
+  (bewusst als Schätzung gekennzeichnet) und erreicht 100 % nie vor dem Ende.
+  Beim Modell-Download (`detail` gesetzt) ist nichts schätzbar → pulsierender Balken.
+  Spalte `receipt_jobs.progress` wird wie `result` automatisch nachgerüstet
+  (`database.ensure_schema_updates`). Tests: `tests/test_receipt_progress.py`.
+  `ReceiptJobsPanel` (unter dem Formular im Ausgaben-Tab) zeigt laufende Scans mit
+  **Fortschrittsbalken** (siehe unten), bzw. rote Fehler-Card mit X. `ExpenseForm` zeigt nur noch kurz „Beleg
   wird hochgeladen …" und ruft danach `onReceiptQueued` (→ `refresh`).
   `ReceiptUploadResult` enthält jetzt `job_id`; neue API-Funktionen
   `getReceiptJobs`, `dismissReceiptJob`, Typ `ReceiptJob`.
@@ -884,7 +900,7 @@ fortführen:
   `category_rules` — anders als Spalten-Ergänzungen legt `create_all` **neue
   Tabellen automatisch** beim nächsten Backend-Start an, hier ist also **kein**
   manuelles SQL und **kein** `down -v` nötig (ein `restart backend`/`up` genügt).
-  **Neu (2026-10-02):** die nullable Spalte `receipt_jobs.result` (JSON) wird
+  **Neu (2026-10-02):** die nullable Spalte `receipt_jobs.result` (JSON) und `receipt_jobs.progress` (INTEGER, Default 0) werden
   **automatisch** beim Backend-Start nachgerüstet: `database.ensure_schema_updates()`
   (idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, nur Postgres) — der erste
   Mechanismus dieser Art; weitere Spalten-Ergänzungen können dort ergänzt werden,
@@ -977,7 +993,7 @@ docker compose logs -f backend
 
 ---
 
-_Zuletzt aktualisiert: 2026-10-02 (Vision-Modell-Test `qwen3.5:2b` war zu langsam → zurück auf `qwen2.5vl:3b`, `think: false` nur noch bei Qwen3-Modellen; Duplikats-Erkennung beim Bon-Scan: Geschäft + Betrag + Datum, Job-Status `duplicate`, `POST …/confirm`, `duplicates.py`, Auto-Spalte `receipt_jobs.result`; 13 neue Tests). Vorher: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
+_Zuletzt aktualisiert: 2026-10-02 (Fortschrittsbalken beim Bon-Scan: Meilensteine `ReceiptJob.progress` + Zeitschätzung, `receiptProgress.ts`, 6 neue Tests; Vision-Modell-Test `qwen3.5:2b` war zu langsam → zurück auf `qwen2.5vl:3b`, `think: false` nur noch bei Qwen3-Modellen; Duplikats-Erkennung beim Bon-Scan: Geschäft + Betrag + Datum, Job-Status `duplicate`, `POST …/confirm`, `duplicates.py`, Auto-Spalte `receipt_jobs.result`; 13 neue Tests). Vorher: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
 `404 model not found` nach `down -v`; Modell-Auto-Pull `ensure_model` beim Start/
 vor Scan/bei 404; Status-Rückmeldung `ReceiptJob` + Endpunkte `GET/DELETE
 …/receipt-jobs` + Frontend-Polling `useReceiptJobs`/`ReceiptJobsPanel`; zentrales

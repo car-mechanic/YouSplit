@@ -19,6 +19,44 @@ STATUS_DONE = "done"
 STATUS_FAILED = "failed"
 STATUS_DUPLICATE = "duplicate"
 
+# Fortschritts-Meilensteine (0–100) eines Bon-Scans. Die KI-Analyse ist mit Abstand
+# der laengste Abschnitt (ANALYZING → ANALYZED); Ollama meldet dabei keinen
+# echten Fortschritt, deshalb schaetzt das Frontend dazwischen aus der Zeit.
+PROGRESS_ACCEPTED = 5  # Bon angenommen, wartet auf den Start
+PROGRESS_ANALYZING = 10  # KI liest den Bon
+PROGRESS_ANALYZED = 85  # KI fertig → Duplikat-Pruefung
+PROGRESS_CHECKED = 90  # Kein Duplikat → Wechselkurs holen
+PROGRESS_SAVING = 95  # Ausgabe wird gespeichert
+PROGRESS_DONE = 100
+
+# Erwartete Dauer der KI-Analyse als gleitender Durchschnitt der letzten Scans
+# (nur im Speicher: nach einem Neustart gilt wieder der Startwert). Dient allein
+# der Fortschrittsanzeige.
+DEFAULT_ANALYSIS_SECONDS = 60.0
+_EMA_WEIGHT = 0.5
+_analysis_seconds = DEFAULT_ANALYSIS_SECONDS
+
+
+def record_analysis_duration(seconds: float) -> None:
+    """Merkt sich die Dauer eines Scans fuer die Zeitschaetzung (Durchschnitt)."""
+    global _analysis_seconds
+    if seconds <= 0:
+        return
+    _analysis_seconds = (
+        _EMA_WEIGHT * seconds + (1 - _EMA_WEIGHT) * _analysis_seconds
+    )
+
+
+def expected_analysis_seconds() -> int:
+    """Geschaetzte Dauer der KI-Analyse in Sekunden (mindestens 5)."""
+    return max(5, round(_analysis_seconds))
+
+
+def set_progress(job_id: uuid.UUID, progress: int) -> None:
+    """Setzt den Fortschritt eines laufenden Jobs (0–100)."""
+    _update(job_id, progress=max(0, min(100, progress)))
+
+
 ORPHANED_MESSAGE = (
     "Die Verarbeitung wurde durch einen Neustart des Servers abgebrochen. "
     "Bitte den Bon erneut scannen."
@@ -32,7 +70,13 @@ def set_detail(job_id: uuid.UUID, detail: str | None) -> None:
 
 def mark_done(job_id: uuid.UUID, expense_id: uuid.UUID) -> None:
     """Job erfolgreich: verknuepft die angelegte Ausgabe."""
-    _update(job_id, status=STATUS_DONE, detail=None, expense_id=expense_id)
+    _update(
+        job_id,
+        status=STATUS_DONE,
+        detail=None,
+        progress=PROGRESS_DONE,
+        expense_id=expense_id,
+    )
 
 
 def mark_failed(job_id: uuid.UUID, error: str) -> None:

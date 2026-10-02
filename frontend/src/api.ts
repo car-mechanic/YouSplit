@@ -244,6 +244,10 @@ export interface ReceiptJob {
   payer_name: string;
   filename: string | null;
   status: ReceiptJobStatus;
+  /** Fortschritt 0–100 in Meilensteinen (siehe `receiptProgress.ts`). */
+  progress: number;
+  /** Erwartete Dauer der KI-Analyse in Sekunden (Schnitt der letzten Scans). */
+  estimated_seconds: number | null;
   /** Optionaler Fortschritts-Hinweis (z. B. Modell-Download). */
   detail: string | null;
   /** Nutzerverständliche Fehlerursache bei status "failed". */
