@@ -17,6 +17,7 @@ logger = logging.getLogger("yousplit.receipts")
 STATUS_PROCESSING = "processing"
 STATUS_DONE = "done"
 STATUS_FAILED = "failed"
+STATUS_DUPLICATE = "duplicate"
 
 ORPHANED_MESSAGE = (
     "Die Verarbeitung wurde durch einen Neustart des Servers abgebrochen. "
@@ -37,6 +38,20 @@ def mark_done(job_id: uuid.UUID, expense_id: uuid.UUID) -> None:
 def mark_failed(job_id: uuid.UUID, error: str) -> None:
     """Job gescheitert: speichert die (nutzerverstaendliche) Ursache."""
     _update(job_id, status=STATUS_FAILED, detail=None, error=error[:500])
+
+
+def mark_duplicate(job_id: uuid.UUID, message: str, result: dict) -> None:
+    """Job beendet, aber nichts angelegt: der Bon ist schon in der Liste.
+
+    ``result`` haelt die erkannten Bon-Daten fuer ein spaeteres "Trotzdem
+    hinzufuegen" (ohne erneute KI-Analyse).
+    """
+    _update(
+        job_id,
+        status=STATUS_DUPLICATE,
+        detail=message[:300],
+        result=result,
+    )
 
 
 def _update(job_id: uuid.UUID, **fields: object) -> None:

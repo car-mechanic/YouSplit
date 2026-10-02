@@ -346,7 +346,7 @@ class ReceiptJobResponse(BaseModel):
     list_id: uuid.UUID
     payer_name: str
     filename: str | None = None
-    status: str  # "processing" | "done" | "failed"
+    status: str  # "processing" | "done" | "failed" | "duplicate"
     detail: str | None = None
     error: str | None = None
     expense_id: uuid.UUID | None = None

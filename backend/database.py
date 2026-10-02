@@ -1,7 +1,7 @@
 import os
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 # Fallback = die Zugangsdaten aus der docker-compose.yml
@@ -34,3 +34,19 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def ensure_schema_updates() -> None:
+    """Ruestet nachtraeglich ergaenzte Spalten auf bestehenden Datenbanken nach.
+
+    ``Base.metadata.create_all`` legt nur fehlende *Tabellen* an und aendert
+    vorhandene nie. Bis Alembic eingefuehrt ist, fuegt diese Funktion neue Spalten
+    idempotent per ``ADD COLUMN IF NOT EXISTS`` hinzu (nur PostgreSQL; frische
+    Datenbanken haben die Spalten bereits durch ``create_all``).
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as connection:
+        connection.execute(
+            text("ALTER TABLE receipt_jobs ADD COLUMN IF NOT EXISTS result JSON")
+        )

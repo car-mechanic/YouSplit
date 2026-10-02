@@ -235,6 +235,7 @@ function ListView() {
           <ReceiptJobsPanel
             jobs={receiptJobs.jobs}
             onDismiss={receiptJobs.dismiss}
+            onConfirmDuplicate={receiptJobs.confirmDuplicate}
           />
 
           {actionError && (

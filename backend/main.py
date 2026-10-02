@@ -16,7 +16,7 @@ from logging_setup import setup_logging
 setup_logging()
 
 import models  # noqa: E402,F401 — registriert die Tabellen bei Base.metadata
-from database import Base, engine  # noqa: E402
+from database import Base, engine, ensure_schema_updates  # noqa: E402
 from ollama_client import ensure_model_on_startup  # noqa: E402
 from receipt_jobs import fail_orphaned_jobs  # noqa: E402
 from routers import lists  # noqa: E402
@@ -28,6 +28,8 @@ logger = logging.getLogger("yousplit.main")
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Legt fehlende Tabellen beim Start an (Alembic kommt spaeter)
     Base.metadata.create_all(bind=engine)
+    # Neue Spalten an bestehenden Tabellen nachruesten (create_all kann das nicht)
+    ensure_schema_updates()
     # Scans, die beim letzten Stopp/Reload noch liefen, sind verloren (der
     # BackgroundTask stirbt mit dem Prozess) → als fehlgeschlagen markieren,
     # damit das Frontend nicht ewig "wird verarbeitet" anzeigt.

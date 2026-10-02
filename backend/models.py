@@ -124,6 +124,10 @@ class ReceiptJob(Base):
       und quittiert den Job (DELETE).
     - ``failed``: ``error`` enthaelt eine nutzerverstaendliche Ursache; bleibt
       sichtbar, bis der Nutzer sie verwirft (DELETE).
+    - ``duplicate``: gleicher Bon (Geschaeft + Betrag + Datum) ist schon in der
+      Liste → es wurde **nichts angelegt**; ``detail`` nennt den Treffer,
+      ``result`` haelt die Bon-Daten. Der Nutzer verwirft (DELETE) oder bestaetigt
+      per ``POST …/receipt-jobs/{id}/confirm`` ("Trotzdem hinzufuegen").
 
     Neue Tabelle → ``create_all`` legt sie beim Backend-Start automatisch an.
     """
@@ -140,6 +144,11 @@ class ReceiptJob(Base):
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Bewusst ohne FK: wird die Ausgabe spaeter geloescht, bleibt der Job gueltig
     expense_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # Nur bei Status ``duplicate``: die erkannten Bon-Daten (title, amount,
+    # receipt_date, category, currency), damit "Trotzdem hinzufuegen" ohne
+    # erneute KI-Analyse moeglich ist. Nachtraeglich ergaenzte Spalte → siehe
+    # ``database.ensure_schema_updates`` (create_all aendert keine Tabellen).
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

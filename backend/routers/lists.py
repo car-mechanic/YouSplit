@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import bank_statement
+import duplicates
 import models
 import schemas
 from currency import ExchangeRateError, get_exchange_rate
@@ -51,9 +52,17 @@ def _utc_today() -> date:
 # ---------- Duplikats-Pruefung ----------
 
 def _find_duplicate(
-    db: Session, list_id: uuid.UUID, amount: float, on_date: date
+    db: Session,
+    list_id: uuid.UUID,
+    amount: float,
+    on_date: date,
+    title: str | None = None,
 ) -> models.Expense | None:
     """Sucht in der Liste eine Ausgabe mit gleichem Betrag am ``on_date``.
+
+    Wird ``title`` (das Geschaeft) uebergeben, muss auch dieses uebereinstimmen
+    (unscharf, siehe ``duplicates.shops_match``) — so beim Bon-Scan. Ohne ``title``
+    (manuelle Eingabe) zaehlen nur Betrag und Datum.
 
     Als Datum eines bestehenden Eintrags gilt sein Bon-Datum (``receipt_date``),
     falls vorhanden — sonst ersatzweise das Anlagedatum (``created_at``). So wird
@@ -70,20 +79,50 @@ def _find_duplicate(
     )
     for expense in candidates:
         existing_date = expense.receipt_date or expense.created_at.date()
-        if round(expense.amount, 2) == round(amount, 2) and (
-            existing_date == on_date
-        ):
-            return expense
+        if round(expense.amount, 2) != round(amount, 2):
+            continue
+        if existing_date != on_date:
+            continue
+        if title is not None and not duplicates.shops_match(expense.title, title):
+            continue
+        return expense
     return None
+
+
+def _scan_duplicate_message(
+    list_id: uuid.UUID, analysis: schemas.ReceiptAnalysis
+) -> str | None:
+    """Meldung, falls der gescannte Bon (Geschaeft + Betrag + Datum) schon in der
+    Liste ist — sonst ``None``. Eigene DB-Session (laeuft im BackgroundTask).
+
+    Hat der Bon kein lesbares Datum, gilt wie bei der manuellen Eingabe ``heute``
+    als Vergleichstag.
+    """
+    on_date = analysis.receipt_date or _utc_today()
+    db = SessionLocal()
+    try:
+        match = _find_duplicate(
+            db, list_id, analysis.amount, on_date, title=analysis.title
+        )
+        if match is None:
+            return None
+        amount = f"{match.amount:.2f}".replace(".", ",")
+        return (
+            f"„{match.title}“ über {amount} {match.currency} vom "
+            f"{(match.receipt_date or match.created_at.date()):%d.%m.%Y} ist "
+            "bereits in der Liste. Es wurde nichts hinzugefügt."
+        )
+    finally:
+        db.close()
 
 
 def _duplicate_response() -> JSONResponse:
     """409-Antwort bei erkanntem Duplikat (nur noch manueller Pfad).
 
     Der Bon-Scan laeuft seit Roadmap 4.0 #2 asynchron (Fire & Forget) und liefert
-    sofort 202 — dort gibt es keine 409-Duplikatswarnung mehr. Beim manuellen
-    Anlegen bleibt sie erhalten; das Frontend hat die Werte bereits und braucht
-    keine mitgeschickte Analyse.
+    sofort 202 — dort laeuft die Duplikats-Pruefung im Hintergrund und meldet sich
+    ueber den Status ``duplicate`` des ReceiptJob. Beim manuellen Anlegen bleibt
+    die 409-Warnung; das Frontend hat die Werte bereits.
     """
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT, content={"detail": DUPLICATE_MESSAGE}
@@ -174,6 +213,15 @@ async def _process_receipt_in_background(
             analysis.category,
             analysis.receipt_date,
         )
+        # Duplikats-Pruefung (Geschaeft + Betrag + Datum) VOR dem Kursabruf und
+        # dem Insert: nichts anlegen, sondern den Nutzer entscheiden lassen.
+        duplicate_message = _scan_duplicate_message(list_id, analysis)
+        if duplicate_message is not None:
+            logger.info("Job %s: Duplikat erkannt – %s", job_id, duplicate_message)
+            receipt_jobs.mark_duplicate(
+                job_id, duplicate_message, analysis.model_dump(mode="json")
+            )
+            return
         rate = await get_exchange_rate(analysis.currency)
         expense_id = _insert_scanned_expense(list_id, payer_name, analysis, rate)
     except ReceiptAnalysisError as exc:
@@ -420,8 +468,9 @@ async def upload_receipt(
     ``GET /lists/{id}/receipt-jobs`` ab (Bugfix 2026-09-25 — vorher scheiterten
     Scans still).
 
-    Bewusster Wegfall ggue. vorher: die interaktive Duplikats-Warnung (409) gibt
-    es beim Scan nicht mehr — sie passt nicht zu einer sofortigen 202-Antwort.
+    Die Duplikats-Pruefung (Geschaeft + Betrag + Datum) passiert im Hintergrund:
+    ein bereits vorhandener Bon wird nicht angelegt, der Job bekommt stattdessen
+    den Status ``duplicate`` (Bestaetigung ueber ``…/receipt-jobs/{id}/confirm``).
     """
     _get_list_or_404(db, list_id)
     _ensure_image(receipt)
@@ -471,6 +520,44 @@ def list_receipt_jobs(
         .order_by(models.ReceiptJob.created_at.desc())
         .all()
     )
+
+
+@router.post(
+    "/{list_id}/receipt-jobs/{job_id}/confirm",
+    response_model=schemas.ExpenseResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def confirm_duplicate_receipt(
+    list_id: uuid.UUID,
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> models.Expense:
+    """"Trotzdem hinzufuegen": legt den Bon eines ``duplicate``-Jobs doch an.
+
+    Nutzt die beim Scan gespeicherten Bon-Daten (keine erneute KI-Analyse) und
+    quittiert den Job. 404, wenn der Job unbekannt ist; 409, wenn er kein
+    wartendes Duplikat (mehr) ist.
+    """
+    job = db.get(models.ReceiptJob, job_id)
+    if job is None or job.list_id != list_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Scan nicht gefunden"
+        )
+    if job.status != receipt_jobs.STATUS_DUPLICATE or not job.result:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dieser Scan wartet auf keine Bestaetigung.",
+        )
+
+    analysis = schemas.ReceiptAnalysis.model_validate(job.result)
+    rate = await _rate_or_502(analysis.currency)
+    expense_id = _insert_scanned_expense(list_id, job.payer_name, analysis, rate)
+
+    db.delete(job)
+    db.commit()
+    expense = db.get(models.Expense, expense_id)
+    assert expense is not None  # gerade angelegt
+    return expense
 
 
 @router.delete(

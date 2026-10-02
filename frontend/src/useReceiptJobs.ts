@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dismissReceiptJob, getReceiptJobs } from "./api";
+import { confirmDuplicateReceipt, dismissReceiptJob, getReceiptJobs } from "./api";
 import type { ReceiptJob } from "./api";
 
 /** Abfrage-Intervall, solange mindestens ein Bon verarbeitet wird. */
@@ -12,6 +12,11 @@ interface UseReceiptJobsResult {
   refresh: () => void;
   /** Fehlgeschlagenen (oder hängenden) Scan ausblenden und im Backend löschen. */
   dismiss: (jobId: string) => void;
+  /**
+   * Doppelten Bon „trotzdem hinzufügen“: legt die Ausgabe an, lädt die Liste neu
+   * und blendet den Job aus. Wirft bei Fehlern (Panel zeigt die Meldung).
+   */
+  confirmDuplicate: (jobId: string) => Promise<void>;
 }
 
 /**
@@ -25,7 +30,9 @@ interface UseReceiptJobsResult {
  *   abgefragt; sonst ruht das Polling (kein Dauer-Traffic).
  * - Ist ein Job `done`, wird `onJobsCompleted` aufgerufen (→ Liste neu laden)
  *   und der Job im Backend quittiert.
- * - `failed`-Jobs bleiben sichtbar, bis der Nutzer sie verwirft.
+ * - `failed`- und `duplicate`-Jobs bleiben sichtbar, bis der Nutzer sie verwirft
+ *   (bzw. einen Duplikat-Bon per {@link UseReceiptJobsResult.confirmDuplicate}
+ *   doch hinzufügt).
  *
  * Beim Öffnen der Liste wird einmal abgefragt – so sieht man auch Scans, die
  * liefen oder scheiterten, während die App geschlossen war.
@@ -100,5 +107,15 @@ export function useReceiptJobs(
     [listId],
   );
 
-  return { jobs, refresh, dismiss };
+  const confirmDuplicate = useCallback(
+    async (jobId: string) => {
+      if (!listId) return;
+      await confirmDuplicateReceipt(listId, jobId);
+      setJobs((prev) => prev.filter((job) => job.id !== jobId));
+      onCompletedRef.current();
+    },
+    [listId],
+  );
+
+  return { jobs, refresh, dismiss, confirmDuplicate };
 }

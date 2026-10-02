@@ -231,7 +231,12 @@ export interface ReceiptUploadResult {
  * Status eines Bon-Scans im Hintergrund (Bugfix 2026-09-25). Spiegelt
  * `ReceiptJobResponse` im Backend.
  */
-export type ReceiptJobStatus = "processing" | "done" | "failed";
+export type ReceiptJobStatus =
+  | "processing"
+  | "done"
+  | "failed"
+  /** Bon (Geschäft + Betrag + Datum) ist schon in der Liste – nichts angelegt. */
+  | "duplicate";
 
 export interface ReceiptJob {
   id: string;
@@ -275,6 +280,21 @@ export async function uploadReceipt(
 export async function getReceiptJobs(uuid: string): Promise<ReceiptJob[]> {
   const response = await fetch(`${API_BASE_URL}/lists/${uuid}/receipt-jobs`);
   return handleResponse<ReceiptJob[]>(response);
+}
+
+/**
+ * „Trotzdem hinzufügen“ für einen Scan mit Status `duplicate`: legt die Ausgabe
+ * aus den gespeicherten Bon-Daten an (keine erneute KI-Analyse).
+ */
+export async function confirmDuplicateReceipt(
+  uuid: string,
+  jobId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/lists/${uuid}/receipt-jobs/${jobId}/confirm`,
+    { method: "POST" },
+  );
+  await handleResponse<unknown>(response);
 }
 
 /** Quittiert (löscht) einen Bon-Scan-Job – erledigt oder verworfen. */

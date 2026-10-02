@@ -53,6 +53,7 @@ YouSplit/
 │  ├─ database.py              # Engine, SessionLocal, Base, get_db()-Dependency
 │  ├─ models.py                # SQLAlchemy-Modelle: SharedList, Expense, CategoryRule (Epic 4.0), ReceiptJob (2026-09-25)
 │  ├─ receipt_jobs.py          # Status-Wechsel der Bon-Scan-Jobs (eigene Sessions) + Aufräumen nach Neustart
+│  ├─ duplicates.py            # Duplikats-Erkennung Bon-Scan: unscharfer Geschäftsvergleich `shops_match` (rein, testbar, 2026-10-02)
 │  ├─ schemas.py               # Pydantic-Schemas (Request/Response) + ReceiptAnalysis + Settlement + CategoryRule
 │  ├─ ollama_client.py         # Bildvorbereitung + Ollama-Aufruf + Validierung + Modell-Check/Auto-Pull (ensure_model)
 │  ├─ currency.py              # Wechselkurs-Abruf (Frankfurter-API) — Multi-Currency
@@ -61,6 +62,7 @@ YouSplit/
 │  ├─ bank_statement.py        # Kontoauszug-Parser: PDF → Buchungen + Lebensmittel-Erkennung (rein, testbar, Epic 4.0 #3, 2026-10-02)
 │  ├─ food_merchants.txt       # Händlerliste für die Lebensmittel-Erkennung — VON HAND ERWEITERBAR (~330 Einträge weltweit, 2026-10-02)
 │  ├─ tests/test_bank_statement.py # unittest für den Parser (`python -m unittest discover -s tests`)
+│  ├─ tests/test_duplicates.py # unittest Duplikats-Erkennung + Scan-Flow (SQLite, braucht fastapi+sqlalchemy)
 │  └─ routers/
 │     └─ lists.py              # Alle Endpunkte; Bon-Upload jetzt asynchron (BackgroundTasks, Epic 4.0)
 └─ frontend/
@@ -87,7 +89,7 @@ YouSplit/
          ├─ CurrencySelect.tsx # Währungs-Dropdown: Hauptwährungen + "Mehr…" klappt EU-Währungen auf (Roadmap 3.0 #2)
          ├─ SettlementCard.tsx # Kassensturz-UI für N Personen (zeigt Settlement vom Backend)
          ├─ ExpenseForm.tsx    # "Ausgabe hinzufügen"-Feature (Formular, Zahler-Dropdown, Scan, Duplikat, Splitter)
-         ├─ ReceiptJobsPanel.tsx # Status laufender/fehlgeschlagener Bon-Scans (Spinner bzw. Fehler + Verwerfen)
+         ├─ ReceiptJobsPanel.tsx # Status laufender/fehlgeschlagener/doppelter Bon-Scans (Spinner, Fehler + Verwerfen, Duplikat + „Trotzdem hinzufügen“)
          ├─ ExpenseList.tsx    # Abschnitt "Bisherige Ausgaben" (Sortierung, Empty State)
          ├─ ExpenseListItem.tsx # Eine Ausgabe als Card (Meta, Datum, Betrag, Aktionen)
          ├─ DatePicker.tsx     # Eigener Kalender-Picker (emerald) fürs Ausgabendatum
@@ -177,6 +179,7 @@ Ollama (:11434, qwen2.5vl:3b)
 | `DELETE /api/lists/{list_id}/expenses/{expense_id}`| Ausgabe löschen → `204`                                     |
 | `POST /api/lists/{list_id}/receipts`               | **Bon-Upload — asynchron** (multipart: `payer_name` + `receipt`-Bild) → **`202` `{"status":"processing","job_id":…}`** (Epic 4.0 #2, Job seit 2026-09-25) |
 | `GET  /api/lists/{list_id}/receipt-jobs`           | Nicht quittierte Bon-Scans (neueste zuerst) → `list[ReceiptJobResponse]` — Frontend pollt |
+| `POST /api/lists/{list_id}/receipt-jobs/{job_id}/confirm` | **„Trotzdem hinzufügen“** für einen Scan mit Status `duplicate` → legt die Ausgabe aus den gespeicherten Bon-Daten an (`201 ExpenseResponse`), quittiert den Job; `404` unbekannt, `409` wenn kein wartendes Duplikat |
 | `DELETE /api/lists/{list_id}/receipt-jobs/{job_id}`| Job quittieren/verwerfen → `204` (idempotent)               |
 | `POST /api/lists/{list_id}/bank-statement/parse`   | **Kontoauszug-PDF lesen** (multipart: `statement`) → `BankStatementPreview` (alle Buchungen + Kategorie + Duplikat-Flag; **speichert nichts**) |
 | `POST /api/lists/{list_id}/bank-statement/import`  | Bestätigte Buchungen als **Einzelausgaben** anlegen (`BankImportRequest`) → `201 BankImportResponse` |
@@ -187,9 +190,21 @@ Ollama (:11434, qwen2.5vl:3b)
 eines bestehenden Eintrags gilt sein `receipt_date` (falls gesetzt), sonst
 `created_at`. Vergleichstag der neuen Ausgabe ist `heute`. Falls ja → **HTTP 409**
 (`{"detail": …}`). Mit `?force=true` wird die Prüfung übergangen. Sie greift **nur
-beim Neuanlegen**, nicht beim Bearbeiten (PUT). **Seit Epic 4.0 #2** läuft der
-**Bon-Scan asynchron** (Fire & Forget) und macht **keine** interaktive
-Duplikats-Prüfung mehr (passt nicht zu einer sofortigen 202-Antwort).
+beim Neuanlegen**, nicht beim Bearbeiten (PUT).
+
+**Duplikats-Prüfung beim Bon-Scan (2026-10-02):** Seit Epic 4.0 #2 läuft der Scan
+asynchron und kann keine 409 mehr liefern — vorher wurde ein zweimal gescannter
+Bon deshalb **gar nicht** als Duplikat erkannt. Jetzt prüft der Hintergrund-Task
+nach der KI-Analyse (vor Kursabruf und Insert) `_find_duplicate(..., title=…)`:
+**gleiches Geschäft + gleicher Betrag (Cent) + gleiches Datum** (Bon-Datum, sonst
+heute). Das Geschäft wird **unscharf** verglichen (`duplicates.shops_match`:
+Kleinschreibung, ohne Satzzeichen/Rechtsform wie „GmbH“/„Markt“, Teilstring ab 3
+Zeichen oder Ähnlichkeit ≥ 0,75), weil das Vision-Modell denselben Bon mal „REWE“,
+mal „Rewe Markt GmbH“ nennen kann. Bei einem Treffer wird **nichts angelegt**;
+der `ReceiptJob` bekommt Status `duplicate` (`detail` = Meldung mit dem Treffer,
+`result` = Bon-Daten). Das Frontend zeigt eine amberfarbene Karte mit
+„Verwerfen“ (DELETE) und „Trotzdem hinzufügen“ (`POST …/confirm`, ohne erneute
+KI-Analyse). Die manuelle Eingabe bleibt bei „Betrag + Datum“ (ohne Geschäft).
 
 ### 2.4 Ablauf Kassenbon-Scan (End-to-End)
 
@@ -415,8 +430,9 @@ Erster Baustein eines größeren Epics. In diesem Schritt gebaut:
     alle bekannten Personen der Liste (`settlement.collect_persons`) **plus** den
     Zahler; das Ergebnis landet als `splits`-JSON, `split_ratio` wird abgeleitet.
   - **Fehler** (OCR/Kurs/DB) werden nur ins Docker-Log geschrieben — dem Client
-    kann nach der 202 nichts mehr gemeldet werden. **Bewusster Wegfall:** die
-    interaktive 409-Duplikatswarnung entfällt beim Scan.
+    kann nach der 202 nichts mehr gemeldet werden. **Duplikate** (Geschäft + Betrag
+    + Datum) meldet der Task seit 2026-10-02 über den Job-Status `duplicate`
+    (siehe 2.3) statt über eine interaktive 409-Warnung.
   - **Frontend:** kein blockierender Spinner mehr; nach der Auswahl sofort eine
     Erfolgsmeldung („Beleg wird im Hintergrund verarbeitet …") + Formular-Reset
     (`ExpenseForm`). `api.uploadReceipt` gibt `{status}` zurück (kein `force` mehr).
@@ -458,9 +474,10 @@ das Frontend nach der `202` nichts mehr erfuhr.
   nötig**; erster Start nach Volume-Verlust lädt ~3 GB.
 - **Status-Rückmeldung (`ReceiptJob`, Tabelle `receipt_jobs`):** `id`, `list_id`
   (FK, cascade über `SharedList.receipt_jobs`), `payer_name`, `filename`,
-  `status` (`processing`/`done`/`failed`), `detail` (Fortschritts-Hinweis),
-  `error` (nutzerverständliche Ursache), `expense_id` (ohne FK), `created_at`,
-  `updated_at`. Zustandswechsel gekapselt in `receipt_jobs.py` (je eigene kurze
+  `status` (`processing`/`done`/`failed`/**`duplicate`**), `detail`
+  (Fortschritts-Hinweis bzw. Duplikat-Meldung), `error` (nutzerverständliche
+  Ursache), `expense_id` (ohne FK), **`result`** (JSON, nur bei `duplicate`: die
+  erkannten Bon-Daten für „Trotzdem hinzufügen“), `created_at`, `updated_at`. Zustandswechsel gekapselt in `receipt_jobs.py` (je eigene kurze
   Session, „best effort"). `fail_orphaned_jobs()` im `lifespan` markiert nach
   einem Neustart/Reload hängengebliebene `processing`-Jobs als `failed` (der
   BackgroundTask stirbt mit dem Prozess). Neue Tabelle → `create_all` legt sie
@@ -468,7 +485,8 @@ das Frontend nach der `202` nichts mehr erfuhr.
 - **Frontend:** `useReceiptJobs(listId, onJobsCompleted)` fragt beim Öffnen der
   Liste und nach jedem Upload ab und pollt alle 4 s, **solange** ein Job
   `processing` ist. `done` → Liste neu laden (`getList`) + Job per DELETE
-  quittieren. `failed` bleibt sichtbar, bis der Nutzer ihn verwirft.
+  quittieren. `failed` und `duplicate` bleiben sichtbar, bis der Nutzer sie
+  verwirft (`duplicate` alternativ: `confirmDuplicate` → `POST …/confirm`).
   `ReceiptJobsPanel` (unter dem Formular im Ausgaben-Tab) zeigt Spinner +
   Hinweis bzw. rote Fehler-Card mit X. `ExpenseForm` zeigt nur noch kurz „Beleg
   wird hochgeladen …" und ruft danach `onReceiptQueued` (→ `refresh`).
@@ -866,11 +884,16 @@ fortführen:
   `category_rules` — anders als Spalten-Ergänzungen legt `create_all` **neue
   Tabellen automatisch** beim nächsten Backend-Start an, hier ist also **kein**
   manuelles SQL und **kein** `down -v` nötig (ein `restart backend`/`up` genügt).
+  **Neu (2026-10-02):** die nullable Spalte `receipt_jobs.result` (JSON) wird
+  **automatisch** beim Backend-Start nachgerüstet: `database.ensure_schema_updates()`
+  (idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS`, nur Postgres) — der erste
+  Mechanismus dieser Art; weitere Spalten-Ergänzungen können dort ergänzt werden,
+  bis Alembic kommt.
   Frische `docker compose up` (bzw. nach `down -v`) legt ohnehin alles an.
   **Alembic bleibt offen.**
 - **Async Bon-Verarbeitung:** ~~ohne Status-Rückmeldung~~ — seit 2026-09-25 per
-  `ReceiptJob` + Polling gelöst (2.12). Verbleibend: die Duplikatsprüfung beim
-  Scan entfällt; BackgroundTasks sind prozessgebunden (Neustart/`--reload`
+  `ReceiptJob` + Polling gelöst (2.12); die Duplikatsprüfung beim Scan läuft seit
+  2026-10-02 über den Job-Status `duplicate` (2.3). Verbleibend: BackgroundTasks sind prozessgebunden (Neustart/`--reload`
   bricht laufende Scans ab → Job wird `failed`, Bild ist weg, Nutzer muss neu
   scannen); die (kurzen) DB-Operationen laufen synchron im Event-Loop — bei der
   aktuellen Last unkritisch. Bei mehr Last: echte Queue (z. B. arq/Celery).
@@ -943,7 +966,7 @@ docker compose logs -f backend
 
 ---
 
-_Zuletzt aktualisiert: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
+_Zuletzt aktualisiert: 2026-10-02 (Duplikats-Erkennung beim Bon-Scan: Geschäft + Betrag + Datum, Job-Status `duplicate`, `POST …/confirm`, `duplicates.py`, Auto-Spalte `receipt_jobs.result`; 13 neue Tests). Vorher: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
 `404 model not found` nach `down -v`; Modell-Auto-Pull `ensure_model` beim Start/
 vor Scan/bei 404; Status-Rückmeldung `ReceiptJob` + Endpunkte `GET/DELETE
 …/receipt-jobs` + Frontend-Polling `useReceiptJobs`/`ReceiptJobsPanel`; zentrales
