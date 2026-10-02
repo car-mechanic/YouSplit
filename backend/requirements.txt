@@ -1,0 +1,12 @@
+# Direkte Abhaengigkeiten auf die Versionen gepinnt, mit denen die App getestet
+# wurde (Stand 2026-10-02). Ungepinnt zog ein Image-Neubau ploetzlich SQLAlchemy
+# 2.1 und legte das Backend lahm (siehe AI_CONTEXT.md, 4.6). Updates bewusst und
+# einzeln machen, nicht nebenbei beim Neubau.
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+sqlalchemy==2.1.2
+psycopg2-binary==2.9.13
+python-multipart==0.0.32
+httpx==0.28.1
+pillow==12.3.0
+pdfplumber==0.11.10

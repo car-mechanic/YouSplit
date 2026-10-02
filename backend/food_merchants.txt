@@ -1,0 +1,398 @@
+# =============================================================================
+# Lebensmittel-Händler für den Kontoauszug-Import  (hier DARFST du selbst ergänzen)
+# =============================================================================
+# Wird bei jedem Kontoauszug-Upload neu gelesen — kein Neustart/Neubau nötig,
+# einfach speichern. Ein Eintrag pro Zeile, Groß-/Kleinschreibung, Umlaute (ä=ae),
+# Bindestriche und Sonderzeichen sind egal ("E-Center" = "E CENTER").
+#
+#   REWE            findet das GANZE WORT: "REWE SAGT DANKE", "PayPal *REWE"
+#                   (aber nicht "REWEGRUPPE")
+#   *FLEISCHEREI    Stern davor = auch als TEIL eines Worts: findet zusätzlich
+#                   "LANDFLEISCHEREI MUELLER". Nützlich für zusammengesetzte
+#                   deutsche Wörter. Vorsicht: zu kurze Begriffe treffen schnell
+#                   Falsches!
+#   # ...           Kommentar (Zeile wird ignoriert)
+#
+# Tipp: Nimm den Namen so, wie er im Kontoauszug steht (Buchungstext ansehen),
+# nicht den offiziellen Firmennamen. Je spezifischer, desto weniger Fehltreffer.
+# Eine Buchung zählt als Lebensmittel, sobald EIN Eintrag passt.
+# Nicht gewünscht? Zeile löschen oder mit # auskommentieren.
+# =============================================================================
+
+
+# ---- Eigene Ergänzungen (Kevin) ---------------------------------------------
+SCHOLAND            # Rewe-Markt (Scholand Einzelhandel)
+
+
+# ---- Deutschland: Supermärkte & Discounter ----------------------------------
+REWE
+EDEKA
+ALDI                # Aldi Süd + Aldi Nord
+LIDL
+KAUFLAND
+PENNY
+NETTO               # Netto Marken-Discount (Netto Schwarz = Kaufland-Gruppe)
+NORMA
+TEGUT
+GLOBUS
+MARKTKAUF
+FAMILA
+E CENTER
+NAH UND GUT
+NAH & GUT
+CITTI
+KONSUM
+COMBI               # combi Verbrauchermarkt
+JIBI
+HIT MARKT
+HIT ULRICH
+REAL SB             # real SB-Warenhaus (größtenteils aufgelöst)
+SELGROS
+METRO CASH
+EDEKA CENTER
+MARKT FRISCH
+FRISCHEMARKT
+FRISCHEPARADIES
+FRISCHE PARADIES
+BRINKHUS
+
+# ---- Deutschland: Bio, Reformhaus, Wochenmarkt -------------------------------
+DENNREE
+DENNS BIOMARKT
+ALNATURA
+BIO COMPANY
+BASIC BIO
+VOLLCORNER
+TAGWERK
+LPG BIOMARKT
+REFORMHAUS
+*BIOMARKT
+*BIOLADEN
+WOCHENMARKT
+*HOFLADEN
+DIREKTVERMARKT
+
+# ---- Drogerien (verkaufen Lebensmittel, hier bewusst mitgezählt) -------------
+DM DROGERIE         # dm-drogerie markt; nur "DM" allein wäre zu unspezifisch
+ROSSMANN
+BUDNIKOWSKY
+
+# ---- Bäcker, Metzger, Frisch-Handwerk ---------------------------------------
+*BAECKEREI
+BACKSHOP
+*BACKSTUBE
+BACKWERK
+KAMPS
+BROTHAUS
+*METZGEREI
+*FLEISCHEREI
+LANDMETZGER
+*FEINKOST
+*DELIKATESSEN
+*GEMUESE
+*OBSTHOF
+*FISCHHANDEL
+*GETRAENKEMARKT
+*GETRAENKE
+TRINKGUT
+GETRAENKE HOFFMANN
+
+# ---- Allgemeine Wörter (zusammengesetzt, deshalb mit Stern) -----------------
+*SUPERMARKT
+*SUPERMARKET
+*SUPERMERCADO
+*SUPERMERCATO
+*SUPERMARCHE
+*HYPERMARKET
+*HYPERMARCHE
+*LEBENSMITTEL
+*LEBENSMITTELMARKT
+*GROCERY
+*GROCERIES
+*EPICERIE
+*ALIMENTARI
+
+# ---- Österreich --------------------------------------------------------------
+BILLA
+BILLA PLUS
+SPAR
+EUROSPAR
+INTERSPAR
+HOFER
+MPREIS
+UNIMARKT
+ADEG
+MERKUR MARKT
+NAHKAUF
+
+# ---- Schweiz / Liechtenstein --------------------------------------------------
+MIGROS
+COOP
+DENNER
+VOLG
+MANOR FOOD
+AVEC SHOP
+
+# ---- Niederlande / Belgien / Luxemburg ---------------------------------------
+ALBERT HEIJN
+JUMBO
+HOOGVLIET
+VOMAR
+DEEN SUPERMARKT
+EKOPLAZA
+DELHAIZE
+COLRUYT
+CARREFOUR
+MATCH SUPERMARKT
+CACTUS SUPERMARKT
+BOLK
+
+# ---- Frankreich ---------------------------------------------------------------
+AUCHAN
+LECLERC
+E LECLERC
+INTERMARCHE
+MONOPRIX
+FRANPRIX
+SUPER U
+HYPER U
+CASINO SUPERMARCHE
+GEANT CASINO
+BIOCOOP
+NATURALIA
+BOULANGERIE
+BOUCHERIE
+CARREFOUR MARKET
+CARREFOUR CITY
+
+# ---- Spanien / Portugal -------------------------------------------------------
+MERCADONA
+EROSKI
+ALCAMPO
+CAPRABO
+CONSUM SUPERMERCADOS
+BONPREU
+MASYMAS
+PINGO DOCE
+MINIPRECO
+AUCHAN PORTUGAL
+INTERMARCHE PORTUGAL
+PAO DE ACUCAR
+
+# ---- Italien --------------------------------------------------------------------
+ESSELUNGA
+CONAD
+EUROSPIN
+DESPAR
+TIGROS
+SELEX
+PAM PANORAMA
+IPERCOOP
+IPER
+NATURASI
+PANIFICIO
+MACELLERIA
+
+# ---- Skandinavien -----------------------------------------------------------------
+ICA
+ICA MAXI
+ICA SUPERMARKET
+WILLYS
+HEMKOP
+CITY GROSS
+REMA 1000
+REMA
+MENY
+FOETEX
+BILKA
+SUPERBRUGSEN
+DAGLI BRUGSEN
+KIWI MINIPRIS
+K MARKET
+K SUPERMARKET
+S MARKET
+
+# ---- Großbritannien / Irland --------------------------------------------------------
+TESCO
+SAINSBURY
+SAINSBURYS
+ASDA
+MORRISONS
+WAITROSE
+OCADO
+MARKS AND SPENCER FOOD
+CO OP FOOD
+COOP FOOD
+ICELAND FOODS
+BOOTHS
+DUNNES STORES
+SUPERVALU
+
+# ---- Osteuropa -----------------------------------------------------------------------
+BIEDRONKA
+ZABKA
+DINO POLSKA
+STOKROTKA
+LEWIATAN
+ALBERT SUPERMARKET
+PENNY MARKET
+BILLA CZ
+MAGNIT
+PYATEROCHKA
+PERECRESTOK
+MEGA IMAGE
+KONZUM
+PLODINE
+STUDENAC
+MERCATOR
+ENGROTUS
+MAXIMA
+RIMI
+
+# ---- Türkei / Naher Osten --------------------------------------------------------------
+BIM MAGAZACILIK
+A101
+SOK MARKET
+CARREFOURSA
+LULU HYPERMARKET
+SPINNEYS
+PANDA RETAIL
+TAMIMI MARKETS
+OTHAIM
+SHUFERSAL
+RAMI LEVY
+YOCHANANOF
+
+# ---- USA / Kanada ----------------------------------------------------------------------
+WALMART
+WAL MART
+KROGER
+COSTCO
+SAFEWAY
+ALBERTSONS
+PUBLIX
+WHOLE FOODS
+TRADER JOE
+WEGMANS
+SPROUTS
+MEIJER
+FOOD LION
+STOP AND SHOP
+STOP & SHOP
+GIANT EAGLE
+HARRIS TEETER
+H E B
+WINCO
+PIGGLY WIGGLY
+SAMS CLUB
+SAM S CLUB
+BJS WHOLESALE
+SHOPRITE
+RALPHS
+VONS
+FRED MEYER
+SMITHS FOOD
+SHOPPERS FOOD
+INSTACART
+LOBLAWS
+REAL CANADIAN SUPERSTORE
+SOBEYS
+NO FRILLS
+FRESHCO
+SAVE ON FOODS
+IGA
+FARM BOY
+LONGOS
+H MART
+99 RANCH
+
+# ---- Lateinamerika ----------------------------------------------------------------------
+EXITO
+JUMBO CHILE
+TOTTUS
+UNIMARC
+SANTA ISABEL
+EXTRA SUPERMERCADOS
+ATACADAO
+ASSAI
+SORIANA
+CHEDRAUI
+LA COMER
+SUPERAMA
+DISCO SUPERMERCADO
+
+# ---- Australien / Neuseeland -------------------------------------------------------------
+WOOLWORTHS
+COLES
+FOODLAND
+FOODWORKS
+HARRIS FARM
+PAKNSAVE
+PAK N SAVE
+FRESH CHOICE
+
+# ---- Asien ----------------------------------------------------------------------------------
+AEON
+SEIYU
+ITO YOKADO
+LIFE SUPERMARKET
+MAXVALU
+FAIRPRICE
+NTUC
+COLD STORAGE
+SHENG SIONG
+GIANT HYPERMARKET
+JAYA GROCER
+TESCO LOTUS
+BIG C
+MAKRO
+TOPS MARKET
+CP FRESH MART
+HOMEPLUS
+EMART
+E MART
+LOTTE MART
+LOTTE SUPER
+GS25
+DMART
+RELIANCE FRESH
+RELIANCE SMART
+BIG BAZAAR
+MORE SUPERMARKET
+SPENCERS RETAIL
+BLINKIT
+BIGBASKET
+GROFERS
+PARKNSHOP
+SM SUPERMARKET
+ROBINSONS SUPERMARKET
+SAVEMORE
+WET MARKET
+
+# ---- Afrika ---------------------------------------------------------------------------------------
+PICK N PAY
+PICK AND PAY
+CHECKERS
+BOXER SUPERSTORES
+SPAR SOUTH AFRICA
+FOOD LOVERS MARKET
+WOOLWORTHS FOOD
+GAME FOODLINER
+NAIVAS
+QUICKMART
+CARREFOUR EGYPT
+SPINNEYS EGYPT
+KAZYON
+MARJANE
+LABEL VIE
+
+# ---- Lieferdienste für Lebensmittel (Supermarkt-Ware, kein Restaurant) -----------------------------
+GORILLAS
+GETIR
+KNUSPR
+REWE LIEFERSERVICE
+REWE ABHOLSERVICE
+EDEKA24
+HELLOFRESH
+MARLEY SPOON
+KOCHHUB

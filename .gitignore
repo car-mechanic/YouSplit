@@ -1,0 +1,30 @@
+# --- Lokale Konfiguration / Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / Frontend (frontend/.gitignore deckt den Rest ab) ---
+node_modules/
+dist/
+
+# --- Editor / OS ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Lokale Test-Artefakte (enthält evtl. persönliche Daten) ---
+test_bon.png
+
+# --- Versehentlich angelegter Ordner (Windows-Pfadfehler) ---
+backend;C/
