@@ -9,7 +9,7 @@
 [`AI_CONTEXT.md`](./AI_CONTEXT.md).** Dort stehen:
 
 - **Projekt-Übersicht & Tech-Stack** (React/TS-Frontend, FastAPI-Backend,
-  PostgreSQL, lokales Ollama `qwen3.5:2b`, Docker Compose)
+  PostgreSQL, lokales Ollama `qwen2.5vl:3b`, Docker Compose)
 - **Architektur-Richtlinien** (Zusammenspiel der Services, Datenmodell,
   Endpunkte, Kassenbon-Scan-Ablauf, Kassensturz-Logik)
 - **Coding-Standards** (Clean Code, **deutsche Kommentare**, Modulstruktur)
@@ -24,7 +24,7 @@ Roadmap-Punkte). Sie ist das dauerhafte Gedächtnis des Projekts.
 ```bash
 docker compose up --build
 # Erststart: einmalig das Vision-Modell laden
-docker compose exec ollama ollama pull qwen3.5:2b
+docker compose exec ollama ollama pull qwen2.5vl:3b
 ```
 
 Frontend: http://localhost:5173 · Backend/Docs: http://localhost:8000/docs

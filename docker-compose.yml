@@ -28,7 +28,7 @@ services:
       # "Fire & Forget"-Verarbeitung, bei der niemand mehr aktiv wartet.
       OLLAMA_KEEP_ALIVE: 1m
     volumes:
-      # Modelle ueberleben Container-Neustarts (qwen3.5:2b ist ~2,7 GB)
+      # Modelle ueberleben Container-Neustarts (qwen2.5vl:3b ist ~3 GB)
       - ollama_models:/root/.ollama
     ports:
       - "11434:11434"
@@ -41,10 +41,9 @@ services:
       DATABASE_URL: postgresql://yousplit:yousplit@db:5432/yousplit
       OLLAMA_URL: http://ollama:11434
       # llama3.2-vision (mllama) wird von aktuellen Ollama-Versionen nicht
-      # mehr unterstuetzt. Seit 2026-10-02 Test mit qwen3.5:2b (Vision, OCR);
-      # Alternativen: qwen3.5:4b (genauer, ~3,4 GB) oder qwen2.5vl:3b (vorher).
-      # Qwen3.5 braucht eine aktuelle Ollama-Version (`docker compose pull ollama`).
-      OLLAMA_MODEL: qwen3.5:2b
+      # mehr unterstuetzt. qwen2.5vl:3b ist auf CPU deutlich schneller als der
+      # Test mit qwen3.5:2b (2026-10-02) und bleibt deshalb der Standard.
+      OLLAMA_MODEL: qwen2.5vl:3b
       # CPU-Inferenz eines Bons dauert 2-4 Minuten — grosszuegig warten
       OLLAMA_TIMEOUT_SECONDS: "480"
       # Log-Level des Backends (DEBUG zeigt z. B. auch rohe KI-Antworten)

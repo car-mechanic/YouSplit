@@ -12,10 +12,27 @@ from pydantic import ValidationError
 from schemas import ReceiptAnalysis
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
-# Seit 2026-10-02 Test mit qwen3.5:2b (neuere Generation, ~2,7 GB). Faellt die
-# Erkennung schlechter aus: ``OLLAMA_MODEL`` auf ``qwen3.5:4b`` (~3,4 GB) oder
-# zurueck auf ``qwen2.5vl:3b`` setzen — nur diese eine Einstellung aendert sich.
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5:2b")
+# qwen2.5vl:3b ist auf CPU spuerbar schneller als die neueren Qwen3.x-Modelle:
+# Der Test mit qwen3.5:2b (2026-10-02) dauerte deutlich laenger pro Bon; auf dem
+# Ollama-Tracker gibt es Berichte, dass Qwen3-VL/Qwen3.5 dort langsamer laufen
+# als Qwen2.5-VL. Ein Wechsel aendert nur diese eine Einstellung.
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5vl:3b")
+
+# Modelle der Qwen3-Familie "denken" standardmaessig erst laenger nach, bevor sie
+# antworten. Nur fuer sie wird das Denken explizit abgeschaltet.
+THINKING_MODEL_PREFIXES = ("qwen3",)
+
+
+def thinking_options(model: str) -> dict:
+    """Zusatzfelder fuer den Chat-Aufruf: ``think: false`` bei Denk-Modellen.
+
+    Fuer andere Modelle (z. B. qwen2.5vl) wird das Feld bewusst NICHT gesendet —
+    sie kennen keinen Denkmodus, und ein unbekanntes Feld soll keinen Scan
+    gefaehrden.
+    """
+    if model.lower().startswith(THINKING_MODEL_PREFIXES):
+        return {"think": False}
+    return {}
 
 # Beim ersten Request nach einem (Neu-)Start muss Ollama das ~8-GB-Modell
 # erst in den RAM laden — auf CPU-Hardware dauert Laden + Analyse zusammen
@@ -267,11 +284,9 @@ async def analyze_receipt(image_bytes: bytes) -> ReceiptAnalysis:
         # Zwingt Ollama, syntaktisch valides JSON auszugeben
         "format": "json",
         "stream": False,
-        # Qwen3.x denkt standardmaessig erst laenger nach, bevor es antwortet —
-        # fuer reines Ablesen eines Bons nur verschwendete CPU-Minuten (und das
-        # Denken kann die reine JSON-Antwort stoeren). Fuer Modelle ohne
-        # Denkmodus (z. B. qwen2.5vl) ist ``false`` unschaedlich.
-        "think": False,
+        # Denken nur bei Qwen3.x abschalten (reines Ablesen braucht es nicht und
+        # es kostet auf CPU Minuten) — siehe ``thinking_options``.
+        **thinking_options(OLLAMA_MODEL),
         "options": {
             # Bilder zaehlen als Tokens (proportional zur Pixelflaeche).
             # Hohe Bon-Screenshots sprengen Ollamas Default von 4096.
