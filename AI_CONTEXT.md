@@ -960,6 +960,29 @@ fortführen:
   Ausgabe vorkommt (weder Zahler noch in `splits`), bleibt weiterhin unbekannt —
   eine eigenständige Teilnehmerliste je Liste gibt es noch nicht.
 
+### 4.7 Offene To-Dos (vorgemerkt 2026-10-07)
+
+> Vom Nutzer diktierte Ideen/Aufgaben, noch **nicht begonnen**. Pro Punkt gilt wie
+> bisher: erst Ansatz klären, dann umsetzen, dann diese Datei fortschreiben.
+
+1. **UI auf Papier.** 📌 **Vorgemerkt.** Das UI soll nochmal überarbeitet werden —
+   aber der **Nutzer überlegt sich das zuerst selbst auf Papier** (Skizzen/Ablauf).
+   **Kein UI-Umbau und keine Design-Vorschläge von Claude, bevor der Nutzer seine
+   Skizzen mitbringt**; danach gemeinsam umsetzen.
+2. **Umpacken auf den Server.** 📌 **Vorgemerkt.** Die Anwendung soll vom lokalen
+   Docker-Setup auf einen Server umziehen (Deployment). Beim Planen mitbedenken
+   (siehe 4.6): CORS ist fest auf `http://localhost:5173`, keine Authentifizierung
+   (UUID-Link = voller Zugriff), Ollama läuft auf CPU/GPU je nach Hardware, DB ohne
+   Alembic-Migrationen, Zugangsdaten/Secrets nur in `.env`.
+3. **Funktion nochmal überdenken.** 📌 **Vorgemerkt, Umfang offen.** Die
+   Funktionsweise der App soll nochmal grundsätzlich überdacht werden — welche
+   Funktion(en) genau und mit welchem Ziel, ist **noch zu klären**.
+4. **Handy-zu-Handy-App.** 📌 **Vorgemerkt, Machbarkeit offen.** Als **App**
+   entwickeln, die **direkt von Handy zu Handy kommuniziert** (ohne zentralen
+   Server), **sofern möglich**. Zuerst Machbarkeit klären (z. B. P2P/lokale
+   Verbindung vs. Server als Vermittler, Synchronisation, Datenschutz). Hängt mit 2.
+   (Server) und 3. (Funktion) zusammen.
+
 ---
 
 ## Anhang: Betrieb & nützliche Befehle
