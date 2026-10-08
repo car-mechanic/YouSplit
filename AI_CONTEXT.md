@@ -1170,6 +1170,19 @@ fortführen:
    Server), **sofern möglich**. Zuerst Machbarkeit klären (z. B. P2P/lokale
    Verbindung vs. Server als Vermittler, Synchronisation, Datenschutz). Hängt mit 2.
    (Server) und 3. (Funktion) zusammen.
+5. **Sauberes Repo für die Veröffentlichung.** 📌 **Vorgemerkt, Zukunft (nicht jetzt).**
+   Das Repo soll irgendwann **öffentlich** werden. Am 2026-10-08 wurde die
+   Commit-Historie bereits auf die GitHub-No-Reply-Adresse umgeschrieben (alle
+   Commits `car-mechanic <193820155+car-mechanic@users.noreply.github.com>`, per
+   Force-Push). Die **alten Commits können auf GitHub aber noch per Hash abrufbar
+   sein.** Deshalb zur Veröffentlichung entweder (a) ein **neues, leeres Repo**
+   anlegen und nur den bereinigten `main` hochladen (sauberste Variante) oder
+   (b) den GitHub-Support bitten, die unreferenzierten Objekte zu entfernen.
+   Vorher außerdem prüfen: keine Secrets/Tokens im Repo, das für Claude angelegte
+   Zugriffs-Token auf GitHub **widerrufen**, ungenutztes `frontend/src/assets/hero.png`
+   (Vite-Vorlage) entfernen oder behalten, README/LICENSE ergänzen, lokale
+   Entwicklungs-Zugangsdaten (`yousplit`/`yousplit`) sind nur Defaults und für einen
+   Server zu ändern (siehe 2.).
 
 ---
 
