@@ -47,15 +47,10 @@ def ensure_schema_updates() -> None:
     if engine.dialect.name != "postgresql":
         return
     with engine.begin() as connection:
-        connection.execute(
-            text("ALTER TABLE receipt_jobs ADD COLUMN IF NOT EXISTS result JSON")
-        )
-        connection.execute(
-            text(
-                "ALTER TABLE receipt_jobs ADD COLUMN IF NOT EXISTS "
-                "progress INTEGER NOT NULL DEFAULT 0"
-            )
-        )
+        # Der Kassenbon-Scan (Ollama) wurde entfernt (2026-10-08). Die Tabelle
+        # der Scan-Jobs haelt nur fluechtigen Status und haengt per Fremdschluessel
+        # an den Listen — ohne Modell wuerde sie das Loeschen einer Liste blockieren.
+        connection.execute(text("DROP TABLE IF EXISTS receipt_jobs"))
         connection.execute(
             text("ALTER TABLE shared_lists ADD COLUMN IF NOT EXISTS members JSON")
         )

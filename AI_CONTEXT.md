@@ -8,68 +8,70 @@
 > Änderungen (neue Endpunkte, geänderte Architektur, erledigte Roadmap-Punkte)
 > **diese Datei mit aktualisieren** — sie ist das Gedächtnis, nicht der Chat.
 > Sie ersetzt keinen Blick in den Code; im Zweifel gilt der Code.
+>
+> **⚠️ Stand 2026-10-08:** Der **Kassenbon-Scan und Ollama sind aus der App
+> entfernt** (die KI war auf dem Entwicklungsrechner zu langsam). Der Button
+> „Kassenbon scannen“ ist nur noch ein grauer, durchgestrichener Platzhalter ohne
+> Funktion. Ein neues Konzept steht aus (4.7, Punkt 6). Was entfernt wurde und was
+> bleibt: **Abschnitt 2.16**. Die Abschnitte 2.4, 2.11 (Teil Scan) und 2.12
+> beschreiben den **alten** Scan nur noch als Referenz.
 
 ---
 
 ## 1. Projekt-Übersicht & Tech-Stack
 
-**YouSplit** ist eine App zum Aufteilen gemeinsamer Ausgaben ("Split-App") mit
-**Kassenbon-Scan**: Man fotografiert einen Bon, eine lokale Vision-KI liest
-Titel, Betrag und Kategorie automatisch aus, und die App rechnet aus, wer wem
-wie viel schuldet ("Kassensturz").
+**YouSplit** ist eine App zum Aufteilen gemeinsamer Ausgaben ("Split-App"):
+Ausgaben erfassen (manuell oder per Kontoauszug-Import), und die App rechnet aus,
+wer wem wie viel schuldet ("Kassensturz").
 
-Kernidee: **Privacy-first & lokal** — die OCR/KI läuft über ein lokales
-Ollama-Modell, es verlässt kein Bon-Bild das eigene System / den eigenen Server.
+Ursprünglich gehörte ein **Kassenbon-Scan** mit lokaler Vision-KI (Ollama) dazu.
+Der ist seit 2026-10-08 **entfernt** (siehe 2.16); die App läuft vorerst ohne
+Scannen und ohne KI. Kernidee bleibt **Privacy-first & lokal**.
 
 ### Tech-Stack
 
 | Schicht        | Technologie                                                                 |
 | -------------- | --------------------------------------------------------------------------- |
 | **Frontend**   | React 19 + **TypeScript**, Vite, **Tailwind CSS v4** (via `@tailwindcss/vite`), `react-router-dom`, `lucide-react`, **`recharts`** (Charts, Roadmap 2.0 #2) |
-| **Backend**    | Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.0, Pillow (Bildverkleinerung), httpx |
+| **Backend**    | Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2.0, httpx, pdfplumber (kein Pillow mehr seit 2026-10-08) |
 | **Datenbank**  | PostgreSQL 17 (`postgres:17-alpine`)                                          |
-| **KI / OCR**   | Lokales **Ollama**, Modell **`qwen2.5vl:3b`** (Vision; `qwen3.5:2b` am 2026-10-02 getestet → deutlich langsamer), angesprochen über `/api/chat` |
+| **KI / OCR**   | **Keine** (Ollama + Kassenbon-Scan am 2026-10-08 entfernt, Neukonzept offen → 4.7 Punkt 6) |
 | **Wechselkurse** | **Frankfurter-API** (Key-los, `frankfurter.app` → `.dev`) via `httpx` — Multi-Currency (Roadmap 2.0 #3) |
-| **Orchestrierung** | Docker Compose (4 Services: `frontend`, `backend`, `db`, `ollama`)       |
+| **Orchestrierung** | Docker Compose (3 Services: `frontend`, `backend`, `db`)                 |
 
-> ⚠️ **Präzisierung zur ursprünglichen Beschreibung:** Es sind faktisch **vier**
-> Compose-Services (nicht drei). Die "DB" ist konkret PostgreSQL. Das Frontend
-> ist **TypeScript**, nicht reines JS.
+> ⚠️ **Präzisierung:** Die "DB" ist konkret PostgreSQL. Das Frontend ist
+> **TypeScript**, nicht reines JS. (Bis 2026-10-08 gab es einen vierten Service
+> `ollama`.)
 
 ### Verzeichnisstruktur (Ist-Zustand)
 
 ```
 YouSplit/
-├─ docker-compose.yml          # Orchestriert alle 4 Services (Ollama = CPU-Default)
-├─ docker-compose.gpu.yml      # Optionales GPU-Override für Ollama (NVIDIA)
-├─ .env                        # COMPOSE_FILE-Schalter: CPU (Default) ↔ GPU
+├─ docker-compose.yml          # Orchestriert die 3 Services (db, backend, frontend)
+├─ .env                        # lokal, nicht im Git: COMPOSE_FILE
 ├─ AI_CONTEXT.md               # Diese Datei
 ├─ promp.md                    # Ursprüngliche Projekt-Spezifikation/Notizen
 ├─ backend/
 │  ├─ Dockerfile
 │  ├─ requirements.txt
-│  ├─ main.py                  # FastAPI-App, CORS, Lifespan (Tabellen-Setup, verwaiste Jobs, Modell-Auto-Pull), Router-Registrierung
-│  ├─ logging_setup.py         # Zentrales logging (Format, LOG_LEVEL, Polling-Filter im Access-Log) — seit 2026-09-25
+│  ├─ main.py                  # FastAPI-App, CORS, Lifespan (Tabellen-Setup), Router-Registrierung
+│  ├─ logging_setup.py         # Zentrales logging (Format, LOG_LEVEL) — seit 2026-09-25
 │  ├─ database.py              # Engine, SessionLocal, Base, get_db()-Dependency
-│  ├─ models.py                # SQLAlchemy-Modelle: SharedList, Expense, CategoryRule (Epic 4.0), ReceiptJob (2026-09-25)
-│  ├─ receipt_jobs.py          # Status-Wechsel der Bon-Scan-Jobs (eigene Sessions) + Aufräumen nach Neustart
-│  ├─ duplicates.py            # Duplikats-Erkennung Bon-Scan: unscharfer Geschäftsvergleich `shops_match` (rein, testbar, 2026-10-02)
-│  ├─ schemas.py               # Pydantic-Schemas (Request/Response) + ReceiptAnalysis + Settlement + CategoryRule
-│  ├─ ollama_client.py         # Bildvorbereitung + Ollama-Aufruf + Validierung + Modell-Check/Auto-Pull (ensure_model)
+│  ├─ models.py                # SQLAlchemy-Modelle: SharedList, Expense, CategoryRule (Epic 4.0)
+│  ├─ duplicates.py            # Duplikats-Erkennung: unscharfer Geschäftsvergleich `shops_match` (rein, testbar; aktuell nur durch Tests genutzt, fürs Scan-Neukonzept vorgehalten)
+│  ├─ schemas.py               # Pydantic-Schemas (Request/Response) + Settlement + CategoryRule + Kontoauszug
 │  ├─ currency.py              # Wechselkurs-Abruf (Frankfurter-API) — Multi-Currency
 │  ├─ settlement.py            # Kassensturz für N Personen (reine Logik, testbar, in EUR); collect_persons
 │  ├─ splits.py                # fair_split(): gleichmäßige Aufteilung + 1-Cent-Rest (rein, testbar, Epic 4.0)
-│  ├─ categories.py            # Standard-Kategorien (eine Wahrheit für Bon-KI + Frontend-Spiegel), 2026-10-08
 │  ├─ bank_statement.py        # Kontoauszug-Parser: PDF → Buchungen + Lebensmittel-Erkennung (rein, testbar, Epic 4.0 #3, 2026-10-02)
 │  ├─ food_merchants.txt       # Händlerliste für die Lebensmittel-Erkennung — VON HAND ERWEITERBAR (~330 Einträge weltweit, 2026-10-02)
 │  ├─ tests/test_bank_statement.py # unittest für den Parser (`python -m unittest discover -s tests`)
-│  ├─ tests/test_duplicates.py # unittest Duplikats-Erkennung + Scan-Flow (SQLite, braucht fastapi+sqlalchemy)
-│  ├─ tests/test_schemas.py    # unittest Eingabe-Validierung: KI-Betragstexte, NaN/Infinity, Feldlängen (2026-10-07)
-│  ├─ tests/test_uploads.py    # unittest Upload-Grenzen über HTTP (TestClient + SQLite): 413/400/422 (2026-10-07)
-│  ├─ tests/test_members.py    # unittest Personen der Liste: API, Kassensturz, Scan + Import teilen auf alle (2026-10-08)
-│  ├─ tests/test_ollama_client.py # unittest Chat-Optionen, Bildvorbereitung (EXIF-Drehung), Nachbearbeitung der KI-Antwort
+│  ├─ tests/test_duplicates.py # unittest Duplikats-Erkennung (SQLite, braucht fastapi+sqlalchemy)
+│  ├─ tests/test_schemas.py    # unittest Eingabe-Validierung: NaN/Infinity, Feldlängen (2026-10-07)
+│  ├─ tests/test_uploads.py    # unittest Upload-Grenzen (Kontoauszug) über HTTP (TestClient + SQLite): 413/400/422
+│  ├─ tests/test_members.py    # unittest Personen der Liste: API, Kassensturz, Import teilt auf alle (2026-10-08)
 │  └─ routers/
-│     ├─ lists.py              # Listen, Ausgaben, Bon-Scan, Kontoauszug (Bon-Upload asynchron, Epic 4.0)
+│     ├─ lists.py              # Listen, Ausgaben, Kontoauszug-Import
 │     └─ members.py            # PUT …/members: Personen der Liste (2026-10-08, eigenes Modul statt Anbau)
 └─ frontend/
    ├─ Dockerfile
@@ -88,8 +90,6 @@ YouSplit/
       ├─ recentLists.ts        # Zuletzt besuchte Listen im localStorage (Startseite, Roadmap 3.0 #1)
       ├─ tutorialStorage.ts    # Tutorial je Liste + Gerät nur einmal (localStorage), 2026-10-08
       ├─ payerStorage.ts       # localStorage-Schlüssel des gemerkten Zahlers je Liste (ExpenseForm + BankStatementView)
-      ├─ useReceiptJobs.ts     # Hook: pollt Bon-Scan-Status, lädt Liste bei "done" neu (2026-09-25)
-      ├─ receiptProgress.ts    # Fortschritts-Schätzung zwischen den Backend-Meilensteinen (rein, 2026-10-02)
       ├─ pages/
       │  ├─ Home.tsx           # Startseite/Dashboard: CTA "Neue Liste" (Modal) + Grid zuletzt besuchter Listen (Roadmap 3.0 #1)
       │  └─ ListView.tsx       # Orchestrator: lädt Liste + Kassensturz, koordiniert Edit/Delete, merkt Besuch
@@ -106,8 +106,7 @@ YouSplit/
          ├─ AdvancedSplitter.tsx # Kostenaufteilung über ALLE Teilnehmer: 3 Modi (%/Betrag/Anteile), Locking (Roadmap 3.0 #3)
          ├─ CurrencySelect.tsx # Währungs-Dropdown: Hauptwährungen + "Mehr…" klappt EU-Währungen auf (Roadmap 3.0 #2)
          ├─ SettlementCard.tsx # Kassensturz-UI für N Personen (zeigt Settlement vom Backend)
-         ├─ ExpenseForm.tsx    # "Ausgabe hinzufügen"-Feature (Formular, Zahler-Dropdown, Scan, Duplikat, Splitter)
-         ├─ ReceiptJobsPanel.tsx # Status laufender/fehlgeschlagener/doppelter Bon-Scans (Fortschrittsbalken, Fehler + Verwerfen, Duplikat + „Trotzdem hinzufügen“)
+         ├─ ExpenseForm.tsx    # "Ausgabe hinzufügen"-Feature (Formular, Zahler-Dropdown, Duplikat, Splitter; „Kassenbon scannen“ = grauer Platzhalter ohne Funktion)
          ├─ ExpenseList.tsx    # Abschnitt "Bisherige Ausgaben" (Sortierung, Empty State)
          ├─ ExpenseListItem.tsx # Eine Ausgabe als Card (Meta, Datum, Betrag, Aktionen)
          ├─ DatePicker.tsx     # Eigener Kalender-Picker (emerald) fürs Ausgabendatum
@@ -131,10 +130,6 @@ Browser (React/Vite :5173)
       │  fetch → http://localhost:8000/api/...
       ▼
 FastAPI Backend (:8000)  ──SQLAlchemy──►  PostgreSQL (db:5432)
-      │
-      │  Bon-Bild als Base64 (POST /api/chat)
-      ▼
-Ollama (:11434, qwen2.5vl:3b)
 ```
 
 - **Frontend → Backend:** Ausschließlich über `frontend/src/api.ts`. Kein
@@ -144,9 +139,8 @@ Ollama (:11434, qwen2.5vl:3b)
   **nur** über die `get_db()`-Dependency (`Depends(get_db)`), nie global.
   Tabellen werden aktuell beim App-Start via `Base.metadata.create_all` angelegt
   (noch **kein Alembic** — Migrationen sind Zukunft, siehe Roadmap/Tech-Debt).
-- **Backend → Ollama:** Gekapselt in `ollama_client.py`. Kein anderer Code spricht
-  direkt mit Ollama. Kommunikation über `httpx.AsyncClient`, Endpoint `/api/chat`
-  mit `"format": "json"` und erhöhtem `num_ctx` (Bilder zählen als Tokens).
+- **Backend → Ollama:** _entfällt seit 2026-10-08_ (siehe 2.16). Das Backend
+  spricht außer der DB nur noch die Frankfurter-Wechselkurs-API (`currency.py`).
 
 ### 2.2 Datenmodell (`backend/models.py`)
 
@@ -166,7 +160,7 @@ Ollama (:11434, qwen2.5vl:3b)
     und die Gesamtsumme rechnen ausschließlich in EUR (Basiswährung).
   - **`split_ratio`-Konvention:** Anteil, den der **Zahler selbst** trägt.
     `0.5` = 50/50, `0.7` = Zahler trägt 70 %. Seit dem Advanced Split (Roadmap 3.0
-    #3) nur noch **Fallback** (Altdaten + gescannte Bons ohne feine Aufteilung):
+    #3) nur noch **Fallback** (Altdaten ohne feine Aufteilung):
     Der Rest `amount * (1 - split_ratio)` wird bei **n>2** zu gleichen Teilen auf
     die **anderen** Personen verteilt (bei 2 Personen = die eine andere Person).
   - **`splits` (2026-07-21, Roadmap 3.0 #3):** explizite Pro-Person-Aufteilung als
@@ -176,10 +170,14 @@ Ollama (:11434, qwen2.5vl:3b)
     `NULL` = keine feine Aufteilung → der Kassensturz fällt auf `split_ratio`
     zurück. Ist die **maßgebliche Wahrheit** der Aufteilung, wenn gesetzt;
     `split_ratio` wird parallel kohärent gehalten (Eigenanteil des Zahlers).
-  - **`receipt_date` (2026-07-20, To-Do 2/3):** von der KI gelesenes Bon-Datum,
-    **nur beim Scan** gesetzt (bei manueller Eingabe `NULL`). Trägt die
-    Duplikats-Prüfung: so wird derselbe Bon auch an einem **anderen Tag** erneut
-    als Duplikat erkannt. Fehlt es, gilt ersatzweise `created_at`.
+  - **`receipt_date`:** Ausgabedatum (Datum im Formular bzw. Buchungsdatum beim
+    Kontoauszug-Import). Trägt die Duplikats-Prüfung; bei Altdaten `NULL` → dann
+    gilt ersatzweise `created_at`. (Hieß ursprünglich „Bon-Datum“ und wurde vom
+    Scan befüllt; der Name blieb, um keine Migration zu brauchen.)
+- **`ReceiptJob`** (Tabelle `receipt_jobs`) — _entfernt am 2026-10-08_. Beim
+  Backend-Start löscht `database.ensure_schema_updates` die Alt-Tabelle
+  (`DROP TABLE IF EXISTS`), weil sie sonst per Fremdschlüssel das Löschen von
+  Listen blockieren würde.
 - **`CategoryRule` (2026-07-22, Epic 4.0 #3)** — gelernte Zuordnung
   „Empfänger-Stichwort → Kategorie" je Liste (Tabelle `category_rules`). Felder:
   `id`, `list_id` (FK, `cascade="all, delete-orphan"` über `SharedList.category_rules`),
@@ -197,10 +195,6 @@ Ollama (:11434, qwen2.5vl:3b)
 | `PUT  /api/lists/{list_id}/expenses/{expense_id}`  | Ausgabe vollständig aktualisieren (`ExpenseUpdate`)         |
 | `DELETE /api/lists/{list_id}/expenses/{expense_id}`| Ausgabe löschen → `204`                                     |
 | `PUT  /api/lists/{list_id}/members`                | Personen der Liste ersetzen (`{"members": [...]}`, getrimmt, ohne Doppelte, max. 50) → `SharedListResponse` (`routers/members.py`, 2026-10-08) |
-| `POST /api/lists/{list_id}/receipts`               | **Bon-Upload — asynchron** (multipart: `payer_name` + `receipt`-Bild, max. 20 MB → sonst `413`) → **`202` `{"status":"processing","job_id":…}`** (Epic 4.0 #2, Job seit 2026-09-25) |
-| `GET  /api/lists/{list_id}/receipt-jobs`           | Nicht quittierte Bon-Scans (neueste zuerst) → `list[ReceiptJobResponse]` — Frontend pollt |
-| `POST /api/lists/{list_id}/receipt-jobs/{job_id}/confirm` | **„Trotzdem hinzufügen“** für einen Scan mit Status `duplicate` → legt die Ausgabe aus den gespeicherten Bon-Daten an (`201 ExpenseResponse`), quittiert den Job; `404` unbekannt, `409` wenn kein wartendes Duplikat |
-| `DELETE /api/lists/{list_id}/receipt-jobs/{job_id}`| Job quittieren/verwerfen → `204` (idempotent)               |
 | `POST /api/lists/{list_id}/bank-statement/parse`   | **Kontoauszug-PDF lesen** (multipart: `statement`) → `BankStatementPreview` (alle Buchungen + Kategorie + Duplikat-Flag; **speichert nichts**) |
 | `POST /api/lists/{list_id}/bank-statement/import`  | Bestätigte Buchungen als **Einzelausgaben** anlegen (`BankImportRequest`) → `201 BankImportResponse` |
 
@@ -212,21 +206,18 @@ eines bestehenden Eintrags gilt sein `receipt_date` (falls gesetzt), sonst
 (`{"detail": …}`). Mit `?force=true` wird die Prüfung übergangen. Sie greift **nur
 beim Neuanlegen**, nicht beim Bearbeiten (PUT).
 
-**Duplikats-Prüfung beim Bon-Scan (2026-10-02):** Seit Epic 4.0 #2 läuft der Scan
-asynchron und kann keine 409 mehr liefern — vorher wurde ein zweimal gescannter
-Bon deshalb **gar nicht** als Duplikat erkannt. Jetzt prüft der Hintergrund-Task
-nach der KI-Analyse (vor Kursabruf und Insert) `_find_duplicate(..., title=…)`:
-**gleiches Geschäft + gleicher Betrag (Cent) + gleiches Datum** (Bon-Datum, sonst
-heute). Das Geschäft wird **unscharf** verglichen (`duplicates.shops_match`:
-Kleinschreibung, ohne Satzzeichen/Rechtsform wie „GmbH“/„Markt“, Teilstring ab 3
-Zeichen oder Ähnlichkeit ≥ 0,75), weil das Vision-Modell denselben Bon mal „REWE“,
-mal „Rewe Markt GmbH“ nennen kann. Bei einem Treffer wird **nichts angelegt**;
-der `ReceiptJob` bekommt Status `duplicate` (`detail` = Meldung mit dem Treffer,
-`result` = Bon-Daten). Das Frontend zeigt eine amberfarbene Karte mit
-„Verwerfen“ (DELETE) und „Trotzdem hinzufügen“ (`POST …/confirm`, ohne erneute
-KI-Analyse). Die manuelle Eingabe bleibt bei „Betrag + Datum“ (ohne Geschäft).
+**Duplikats-Prüfung beim Bon-Scan (2026-10-02):** _entfernt mit dem Scan
+(2026-10-08)._ Die Hilfsfunktionen bleiben erhalten (`_find_duplicate(..., title=…)`
+und `duplicates.shops_match`, unscharfer Geschäftsvergleich) und sind getestet,
+werden aber aktuell von keinem Endpunkt mit Titel aufgerufen. Sie sind für ein
+Scan-Neukonzept vorgesehen (gleiches Geschäft + Betrag + Datum).
 
-### 2.4 Ablauf Kassenbon-Scan (End-to-End)
+### 2.4 Ablauf Kassenbon-Scan (End-to-End) — ⛔ ENTFERNT am 2026-10-08
+
+> **Nur noch Referenz für das Neukonzept.** Der gesamte Ablauf unten existiert im
+> Code nicht mehr (`ollama_client.py`, `receipt_jobs.py`, die `…/receipts`- und
+> `…/receipt-jobs`-Endpunkte, `ReceiptJob`, Frontend-Polling). Letzter Commit mit
+> funktionierendem Scan: **`9c8783e`** (`git show 9c8783e:backend/ollama_client.py`).
 
 > **Seit Epic 4.0 #2 asynchron (Fire & Forget):** Der Endpoint validiert nur,
 > liest das Bild in den RAM und antwortet **sofort** mit `202`; die Schritte 2–7
@@ -306,22 +297,12 @@ mit sinnvollen Defaults.
 | Variable                  | Default (Code)                  | Bedeutung                                  |
 | ------------------------- | ------------------------------- | ------------------------------------------ |
 | `DATABASE_URL`            | `postgresql://yousplit:...@db` | DB-Verbindung                              |
-| `OLLAMA_URL`              | `http://ollama:11434`           | Ollama-Endpoint                            |
-| `OLLAMA_MODEL`            | `qwen2.5vl:3b`                  | Vision-Modell für OCR (schnellstes getestetes; Qwen3.x siehe Tech-Debt) |
-| `OLLAMA_TIMEOUT_SECONDS`  | `480` (Compose) / `300` (Code)  | Timeout — CPU-Inferenz dauert 2–4 Min      |
-| `OLLAMA_PULL_TIMEOUT_SECONDS` | `3600`                      | Timeout des automatischen Modell-Downloads (2026-09-25) |
-| `LOG_LEVEL`               | `INFO`                          | Backend-Log-Level (`DEBUG` zeigt z. B. rohe KI-Antworten) |
-| `OLLAMA_KEEP_ALIVE`       | `1m` (Compose, Epic 4.0 #1)     | Modell nur 1 Min im RAM halten (~4 GB) → Server-Schonung, dafür Kaltstart nach Pause |
+| `LOG_LEVEL`               | `INFO`                          | Backend-Log-Level                          |
 | `FRANKFURTER_URL`         | `https://api.frankfurter.app/latest` | Wechselkurs-API (Roadmap 2.0 #3)      |
 | `EXCHANGE_RATE_TIMEOUT_SECONDS` | `10`                      | Timeout des Kurs-Abrufs                    |
 
-**Ollama CPU vs. GPU (Roadmap #4, 2026-07-20):** Der Default ist **CPU** und
-startet auf jedem Host — `docker compose up` stürzt nie an fehlender GPU/NVIDIA-
-Runtime ab. Die GPU ist ein **opt-in Override** (`docker-compose.gpu.yml`,
-`deploy.resources.reservations.devices` → NVIDIA). Umschalten über `.env`
-(`COMPOSE_FILE`, plattformunabhängiger `:`-Trenner via `COMPOSE_PATH_SEPARATOR`)
-oder ad hoc: `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up`.
-Voraussetzung für GPU: NVIDIA-GPU + NVIDIA Container Toolkit auf dem Host.
+**Ollama CPU vs. GPU:** _entfällt_ — Ollama und `docker-compose.gpu.yml` wurden am
+2026-10-08 entfernt (2.16).
 
 ### 2.7 Frontend: Tab-Navigation & Statistiken (Roadmap 2.0 #2, 2026-07-21)
 
@@ -452,6 +433,9 @@ zeigt **immer alle bekannten Teilnehmer** der Liste — auch solche, die 0 zahle
 
 ### 2.11 Epic 4.0 — Asynchrone Verarbeitung & Kontoauszüge (Fundament, 2026-07-22)
 
+> **Hinweis 2026-10-08:** Die Teile zu Ollama, Fire-&-Forget-Bon-Upload und
+> `OLLAMA_KEEP_ALIVE` sind **entfernt** (2.16). Der Kontoauszug-Import (2.13) bleibt.
+
 Erster Baustein eines größeren Epics. In diesem Schritt gebaut:
 
 - **Ressourcen-Schonung (#1):** `OLLAMA_KEEP_ALIVE=1m` in `docker-compose.yml` (das
@@ -493,7 +477,11 @@ Erster Baustein eines größeren Epics. In diesem Schritt gebaut:
 
 ---
 
-### 2.12 Bugfix: stille Scan-Fehler → Auto-Pull + Status-Rückmeldung + Logging (2026-09-25)
+### 2.12 Bugfix: stille Scan-Fehler → Auto-Pull + Status-Rückmeldung + Logging (2026-09-25) — ⛔ historisch
+
+> **Hinweis 2026-10-08:** Auto-Pull, `ReceiptJob` und Status-Polling sind mit dem
+> Scan **entfernt** (2.16). Bleibt nur als Lehre für das Neukonzept: asynchrone
+> Verarbeitung braucht immer eine sichtbare Statusrückmeldung.
 
 **Symptom:** Nach dem Fire-&-Forget-Umbau (2.11) passierte nach einem Bon-Upload
 „nichts" — keine Ausgabe, keine Fehlermeldung. **Ursache laut Docker-Log:**
@@ -771,6 +759,53 @@ echten Handy getestet.
 
 ---
 
+### 2.16 Ollama & Kassenbon-Scan entfernt (2026-10-08)
+
+**Anlass:** Die lokale Vision-KI (Ollama, `qwen2.5vl:3b`) läuft auf dem
+Entwicklungsrechner des Nutzers nicht brauchbar — die Maschine ist zu schwach.
+Entscheidung des Nutzers: Scan und Ollama **vorerst komplett raus**, später ein
+neues Konzept (4.7, Punkt 6). Die App ist jetzt **ohne Scannen und ohne KI**.
+
+**Frontend**
+- `ExpenseForm.tsx`: Button „Kassenbon scannen“ bleibt sichtbar, ist aber
+  `disabled`, grau, der Text **durchgestrichen**, Tooltip „vorübergehend nicht
+  verfügbar“. Kein Datei-Input, kein Upload, kein Hinweis-Banner mehr.
+- Gelöscht: `ReceiptJobsPanel.tsx`, `useReceiptJobs.ts`, `receiptProgress.ts`;
+  aus `api.ts` die Typen/Funktionen `uploadReceipt`, `getReceiptJobs`,
+  `confirmDuplicateReceipt`, `dismissReceiptJob`, `ReceiptJob*`.
+- `ListView.tsx`: Job-Polling und Panel ausgebaut. Texte in `ListTutorial.tsx`
+  und im Empty State (`ExpenseList.tsx`) ohne Scan-Hinweis.
+
+**Backend**
+- Gelöscht: `ollama_client.py`, `receipt_jobs.py`, `categories.py` (nur für die
+  Bon-KI), Tests `test_ollama_client.py` und `test_receipt_progress.py`.
+- `routers/lists.py`: Endpunkte `POST …/receipts`, `GET/DELETE …/receipt-jobs`,
+  `POST …/receipt-jobs/{id}/confirm` samt Hintergrund-Task entfernt.
+- `schemas.py`: `ReceiptAnalysis`, `ReceiptUploadResponse`, `ReceiptJobResponse`
+  und die KI-Parser (`_parse_flexible_date`, `_normalize_amount_text`) entfernt.
+- `models.py`: `ReceiptJob` entfernt; `database.ensure_schema_updates` löscht die
+  Alt-Tabelle `receipt_jobs` (`DROP TABLE IF EXISTS`).
+- `main.py`: kein Modell-Auto-Pull und kein „verwaiste Jobs“-Aufräumen mehr.
+  `logging_setup.py`: Access-Log-Filter fürs Polling entfernt.
+- `requirements.txt`: **Pillow** entfernt (nur für die Bildverkleinerung nötig).
+
+**Infrastruktur**
+- `docker-compose.yml`: Service `ollama`, Volume `ollama_models`, Backend-Variablen
+  `OLLAMA_*` und `depends_on: ollama` entfernt. `docker-compose.gpu.yml` gelöscht.
+  `.env` (lokal) enthält nur noch `COMPOSE_FILE=docker-compose.yml`.
+- Wer noch das alte Volume hat: `docker volume rm yousplit_ollama_models`
+  (~3 GB frei) und einmal `docker compose up --build --remove-orphans`.
+
+**Bleibt unverändert:** manuelle Ausgaben, Kassensturz, Statistik, Währungen,
+Advanced Split, Personen, Kontoauszug-Import (PDF, ohne KI). `Expense.receipt_date`
+bleibt als „Ausgabedatum“. `duplicates.shops_match` und
+`_find_duplicate(title=…)` bleiben (getestet, aktuell ungenutzt).
+
+**Wiederherstellen/Nachlesen:** Der komplette alte Scan liegt in der Git-Historie
+(Commit `9c8783e` und früher).
+
+---
+
 ## 3. Coding-Standards
 
 ### 3.1 Grundprinzipien (Clean Code)
@@ -884,10 +919,10 @@ fortführen:
 
 - Listen erstellen und per **UUID-Link teilen** (kein Login).
 - Ausgaben manuell hinzufügen, **bearbeiten** (PUT) und **löschen** (DELETE).
-- **Kassenbon-Scan** funktioniert (Ollama `qwen2.5vl:3b`, Bildverkleinerung,
-  robustes JSON-Parsing inkl. deutscher Beträge **+ Bon-Datum**, Kategorie-Fallback).
-- **Duplikats-Prüfung** (gleicher Betrag + Datum) mit „Trotzdem speichern" — beim
-  Scan über das KI-extrahierte Bon-Datum, ohne KI-Neu-Analyse.
+- **Kassenbon-Scan: vorübergehend abgeschaltet** (2026-10-08, Ollama entfernt,
+  Button grau/durchgestrichen, siehe 2.16). Neukonzept: 4.7 Punkt 6.
+- **Duplikats-Prüfung** (gleicher Betrag + Datum) mit „Trotzdem speichern" bei
+  manueller Eingabe.
 - **Sortierbare, scrollbare** Ausgabenliste (Datum/Betrag, Default neueste zuerst).
 - **Kassensturz für N Personen** funktional (Backend `settlement.py` +
   `SettlementCard.tsx`), inkl. Debt Simplification (minimale Überweisungen).
@@ -1066,6 +1101,10 @@ fortführen:
 
 ### 4.6 Bekannte Einschränkungen / Tech-Debt
 
+> **Hinweis 2026-10-08:** Alle Einträge zu Ollama, Modellen, Scan-Dauer,
+> Auto-Pull und Scan-Tests sind seit der Entfernung (2.16) **gegenstandslos** und
+> bleiben nur als Erfahrungswerte fürs Neukonzept stehen.
+
 - **Keine Migrationen (Alembic fehlt):** Schema entsteht via `create_all`, das
   bestehende Tabellen **nicht** ändert. Feld-Ergänzungen müssen auf laufenden DBs
   von Hand nachgezogen werden. Beispiel `created_at` (2026-07-20) wurde per
@@ -1160,7 +1199,7 @@ fortführen:
 2. **Umpacken auf den Server.** 📌 **Vorgemerkt.** Die Anwendung soll vom lokalen
    Docker-Setup auf einen Server umziehen (Deployment). Beim Planen mitbedenken
    (siehe 4.6): CORS ist fest auf `http://localhost:5173`, keine Authentifizierung
-   (UUID-Link = voller Zugriff), Ollama läuft auf CPU/GPU je nach Hardware, DB ohne
+   (UUID-Link = voller Zugriff), Ollama ist entfernt (2026-10-08), DB ohne
    Alembic-Migrationen, Zugangsdaten/Secrets nur in `.env`.
 3. **Funktion nochmal überdenken.** 📌 **Vorgemerkt, Umfang offen.** Die
    Funktionsweise der App soll nochmal grundsätzlich überdacht werden — welche
@@ -1183,21 +1222,25 @@ fortführen:
    (Vite-Vorlage) entfernen oder behalten, README/LICENSE ergänzen, lokale
    Entwicklungs-Zugangsdaten (`yousplit`/`yousplit`) sind nur Defaults und für einen
    Server zu ändern (siehe 2.).
+6. **Neues Konzept für Ollama / Kassenbon-Scan ausdenken.** 📌 **Vorgemerkt
+   (2026-10-08), noch nicht begonnen.** Ollama und der Scan wurden entfernt, weil
+   die lokale KI auf dem Entwicklungsrechner zu langsam war (2.16). Gesucht ist
+   ein **neues Konzept**, wie ein Kassenbon-Scan später wieder in die App kommt —
+   z. B. andere/kleinere OCR-Lösung, KI auf einem stärkeren Server statt lokal,
+   externe API, oder Scan nur optional. Erst Ansatz mit dem Nutzer klären, dann
+   umsetzen; der Button „Kassenbon scannen“ ist bis dahin ein grauer Platzhalter.
+   Die Erkenntnisse aus dem alten Scan stehen in 2.4, 2.12 und 4.6.
 
 ---
 
 ## Anhang: Betrieb & nützliche Befehle
 
 ```bash
-# Alles starten (Root-Verzeichnis) — Ollama auf CPU (sicherer Default)
+# Alles starten (Root-Verzeichnis)
 docker compose up --build
 
-# Mit NVIDIA-GPU (nur bei vorhandener GPU + NVIDIA Container Toolkit):
-#   entweder in .env COMPOSE_FILE auf beide Dateien setzen, oder ad hoc:
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
-
-# Beim ERSTEN Mal: Vision-Modell in Ollama laden (falls nicht vorhanden)
-docker compose exec ollama ollama pull qwen2.5vl:3b
+# Nach der Ollama-Entfernung einmalig: alten Container aufräumen
+docker compose up --build --remove-orphans
 
 # Logs eines Dienstes verfolgen
 docker compose logs -f backend
@@ -1211,7 +1254,6 @@ cd frontend && npm test && npm run lint && npm run build
 | -------- | ----------------------------------- |
 | Frontend | http://localhost:5173               |
 | Backend  | http://localhost:8000 (Docs: `/docs`) |
-| Ollama   | http://localhost:11434              |
 | Postgres | localhost:5432 (`yousplit`/`yousplit`) |
 
 > Erster Bon-Scan nach einem (Neu-)Start ODER nach >1 Min Inaktivität ist langsam:

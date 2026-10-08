@@ -1,7 +1,7 @@
 """Wechselkurs-Abfrage (Roadmap 2.0 #3, Multi-Currency).
 
 Kapselt den Zugriff auf die freie, Key-lose **Frankfurter-API**
-(https://www.frankfurter.app) — analog zu ``ollama_client.py`` spricht kein
+(https://www.frankfurter.app) — spricht kein
 anderer Code direkt mit diesem externen Dienst.
 
 Kurs-Konvention (projektweit): ``exchange_rate`` ist der **EUR-Wert einer

@@ -19,8 +19,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import models  # noqa: E402
-import schemas  # noqa: E402
-from database import Base, SessionLocal, engine  # noqa: E402
+from database import Base, engine  # noqa: E402
 from routers import lists, members  # noqa: E402
 from settlement import calculate_settlement, collect_persons  # noqa: E402
 
@@ -82,19 +81,6 @@ class MembersApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         expense = self.client.get(f"/api/lists/{self.list_id}").json()["expenses"][0]
         self.assertEqual(expense["splits"], {"Kev": 10.0, "Anna": 10.0, "Tom": 10.0})
-
-    def test_bon_scan_teilt_auf_alle_personen(self) -> None:
-        self.put_members(["Kev", "Anna", "Tom"])
-        analysis = schemas.ReceiptAnalysis(
-            title="REWE", amount=30, date=None, category="Lebensmittel"
-        )
-        expense_id = lists._insert_scanned_expense(
-            uuid.UUID(self.list_id), "Anna", analysis, 1.0
-        )
-        with SessionLocal() as db:
-            expense = db.get(models.Expense, expense_id)
-            self.assertEqual(expense.splits, {"Kev": 10.0, "Anna": 10.0, "Tom": 10.0})
-
 
 class CollectPersonsTest(unittest.TestCase):
     def test_personen_der_liste_kommen_zuerst_ohne_doppelte(self) -> None:

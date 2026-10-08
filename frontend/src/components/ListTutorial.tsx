@@ -132,9 +132,6 @@ function ListTutorial({
             Jede Ausgabe wird gleichmäßig auf alle geteilt. Bei „Aufteilung“
             kannst du das für eine einzelne Ausgabe ändern, z. B. 70/30.
           </li>
-          <li>
-            Oder „Kassenbon scannen“: Betrag und Datum liest die KI vom Foto.
-          </li>
         </ul>
       ),
     },

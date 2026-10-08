@@ -1,4 +1,4 @@
-"""Tests fuer die Eingabe-Validierung der Schemas (API-Grenze + KI-Antwort).
+"""Tests fuer die Eingabe-Validierung der Schemas (API-Grenze).
 
 Ausfuehren (im backend-Ordner; braucht nur pydantic):
 
@@ -14,39 +14,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pydantic import ValidationError  # noqa: E402
 
 import schemas  # noqa: E402
-
-
-def _analysis(amount: object) -> schemas.ReceiptAnalysis:
-    return schemas.ReceiptAnalysis.model_validate(
-        {"title": "REWE", "amount": amount, "date": None, "category": "Lebensmittel"}
-    )
-
-
-class ReceiptAmountTest(unittest.TestCase):
-    def test_betrags_texte_der_ki_werden_gelesen(self) -> None:
-        cases = {
-            "24,50": 24.50,
-            "24,50 €": 24.50,
-            "EUR 24.50": 24.50,
-            "CHF 12.50": 12.50,
-            "$7.99": 7.99,
-            "1.234,56": 1234.56,
-            "1.234,56 €": 1234.56,
-            "1,234.56": 1234.56,
-            "137.77": 137.77,
-            "12,50.": 12.50,
-        }
-        for raw, expected in cases.items():
-            with self.subTest(raw=raw):
-                self.assertAlmostEqual(_analysis(raw).amount, expected)
-
-    def test_zahlen_bleiben_unveraendert(self) -> None:
-        self.assertEqual(_analysis(137.77).amount, 137.77)
-
-    def test_unbrauchbare_betraege_werden_abgelehnt(self) -> None:
-        for raw in ("", "kein Betrag", "-5,00", "0", float("inf"), float("nan")):
-            with self.subTest(raw=raw), self.assertRaises(ValidationError):
-                _analysis(raw)
 
 
 def _expense(**overrides: object) -> dict:

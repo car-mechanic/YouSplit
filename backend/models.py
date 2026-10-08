@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -36,11 +36,6 @@ class SharedList(Base):
     category_rules: Mapped[list["CategoryRule"]] = relationship(
         back_populates="shared_list", cascade="all, delete-orphan"
     )
-    # Status der asynchronen Bon-Scans (Bugfix 2026-09-25). Ebenfalls an die
-    # Liste gebunden und mit ihr geloescht.
-    receipt_jobs: Mapped[list["ReceiptJob"]] = relationship(
-        back_populates="shared_list", cascade="all, delete-orphan"
-    )
 
 
 class Expense(Base):
@@ -54,7 +49,7 @@ class Expense(Base):
     amount: Mapped[float]
     payer_name: Mapped[str] = mapped_column(String(100))
     # Gewichtung der Aufteilung: 0.5 = 50/50, 0.7 = 70/30. Wird nur noch als
-    # Fallback herangezogen (Altdaten + gescannte Bons ohne feine Aufteilung);
+    # Fallback herangezogen (Altdaten ohne feine Aufteilung);
     # die maßgebliche Pro-Person-Aufteilung steht in ``splits`` (siehe unten).
     split_ratio: Mapped[float] = mapped_column(default=0.5)
     # Advanced Split (Roadmap 3.0 #3): explizite Pro-Person-Aufteilung als
@@ -72,10 +67,9 @@ class Expense(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    # Bon-Datum (nur beim Scan gesetzt): das von der KI gelesene Kaufdatum.
-    # Traegt die Duplikats-Pruefung, damit derselbe Bon auch an einem anderen
-    # Tag als Duplikat erkannt wird. Bei manuellen Eintraegen NULL — dort greift
-    # als Datum ersatzweise created_at.
+    # Ausgabedatum (Datum auf dem Bon bzw. der Buchung). Traegt die
+    # Duplikats-Pruefung. Bei Altdaten NULL — dort greift als Datum ersatzweise
+    # created_at.
     receipt_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Multi-Currency (Roadmap 2.0 #3): Erfassungswaehrung der Ausgabe und der
     # zugehoerige Tageskurs. Konvention: exchange_rate = EUR-Wert einer Einheit
@@ -115,59 +109,3 @@ class CategoryRule(Base):
     shared_list: Mapped["SharedList"] = relationship(
         back_populates="category_rules"
     )
-
-
-class ReceiptJob(Base):
-    """Status eines asynchron verarbeiteten Bon-Scans ("Fire & Forget").
-
-    Hintergrund (Bugfix 2026-09-25): Seit dem asynchronen Upload (Roadmap 4.0 #2)
-    bekam das Frontend nur ``202`` zurueck. Scheiterte die Verarbeitung im
-    Hintergrund (z. B. ``404 model not found``), fehlte die Ausgabe einfach —
-    ohne jede Rueckmeldung. Jeder Upload legt jetzt einen Job an, den das
-    Frontend abfragt (Polling):
-
-    - ``processing``: laeuft (``detail`` traegt optional einen Fortschritts-
-      Hinweis, z. B. "KI-Modell wird heruntergeladen").
-    - ``done``: Ausgabe angelegt (``expense_id``) → Frontend laedt die Liste neu
-      und quittiert den Job (DELETE).
-    - ``failed``: ``error`` enthaelt eine nutzerverstaendliche Ursache; bleibt
-      sichtbar, bis der Nutzer sie verwirft (DELETE).
-    - ``duplicate``: gleicher Bon (Geschaeft + Betrag + Datum) ist schon in der
-      Liste → es wurde **nichts angelegt**; ``detail`` nennt den Treffer,
-      ``result`` haelt die Bon-Daten. Der Nutzer verwirft (DELETE) oder bestaetigt
-      per ``POST …/receipt-jobs/{id}/confirm`` ("Trotzdem hinzufuegen").
-
-    Neue Tabelle → ``create_all`` legt sie beim Backend-Start automatisch an.
-    """
-
-    __tablename__ = "receipt_jobs"
-
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    list_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shared_lists.id"))
-    payer_name: Mapped[str] = mapped_column(String(100))
-    # Original-Dateiname, damit der Nutzer fehlgeschlagene Bons zuordnen kann
-    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="processing")
-    # Fortschritt 0–100 (Meilensteine, siehe ``receipt_jobs.PROGRESS_*``). Die
-    # Feinschaetzung zwischen den Meilensteinen macht das Frontend aus der Zeit.
-    # Nachtraeglich ergaenzte Spalte → ``database.ensure_schema_updates``.
-    progress: Mapped[int] = mapped_column(
-        Integer, default=0, server_default=text("0")
-    )
-    detail: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    # Bewusst ohne FK: wird die Ausgabe spaeter geloescht, bleibt der Job gueltig
-    expense_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
-    # Nur bei Status ``duplicate``: die erkannten Bon-Daten (title, amount,
-    # receipt_date, category, currency), damit "Trotzdem hinzufuegen" ohne
-    # erneute KI-Analyse moeglich ist. Nachtraeglich ergaenzte Spalte → siehe
-    # ``database.ensure_schema_updates`` (create_all aendert keine Tabellen).
-    result: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-    shared_list: Mapped["SharedList"] = relationship(back_populates="receipt_jobs")

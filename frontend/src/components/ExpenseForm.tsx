@@ -1,11 +1,9 @@
 import { useMemo, useRef, useState } from "react";
-import type { ChangeEvent, FormEvent, RefObject } from "react";
+import type { FormEvent, RefObject } from "react";
 import { Camera, Loader2, Plus, X } from "lucide-react";
 import {
   addExpense,
-  ApiError,
   DuplicateError,
-  uploadReceipt,
   withReason,
 } from "../api";
 import type { Expense } from "../api";
@@ -49,23 +47,19 @@ interface ExpenseFormProps {
   expenses: Expense[];
   /** Feste Personen der Liste (stehen vorn in Zahler-Auswahl und Splitter). */
   members: string[];
-  /** Wird nach erfolgreichem Anlegen/Scannen mit der neuen Ausgabe aufgerufen. */
+  /** Wird nach erfolgreichem Anlegen mit der neuen Ausgabe aufgerufen. */
   onExpenseAdded: (expense: Expense) => void;
-  /**
-   * Wird aufgerufen, sobald ein Bon angenommen wurde (HTTP 202) – ListView
-   * startet daraufhin das Status-Polling (siehe useReceiptJobs).
-   */
-  onReceiptQueued: () => void;
   /** Ref aufs Titelfeld, damit der Empty-State-CTA hierher fokussieren kann. */
   titleInputRef: RefObject<HTMLInputElement | null>;
 }
 
 /**
- * Formular zum Anlegen einer Ausgabe – manuell oder per Kassenbon-Scan.
+ * Formular zum Anlegen einer Ausgabe. „Kassenbon scannen“ ist vorübergehend
+ * abgeschaltet (grauer Platzhalter, siehe AI_CONTEXT.md 2.16).
  *
  * Kapselt das komplette "Ausgabe hinzufügen"-Feature: Eingabefelder, Datum
  * (DatePicker), Zahler-Dropdown mit "Neue Person" und Geräte-Erkennung
- * (localStorage), Split-Slider (Eigenanteil des Zahlers), Bon-Scan sowie die
+ * (localStorage), Split-Slider (Eigenanteil des Zahlers) sowie die
  * Duplikats-Warnung mit "Trotzdem speichern". Nach außen kommuniziert es nur
  * über onExpenseAdded – die restliche Zustandsverwaltung bleibt hier gekapselt.
  */
@@ -74,7 +68,6 @@ function ExpenseForm({
   expenses,
   members,
   onExpenseAdded,
-  onReceiptQueued,
   titleInputRef,
 }: ExpenseFormProps) {
   const [title, setTitle] = useState("");
@@ -113,15 +106,11 @@ function ExpenseForm({
   }
 
   const [saving, setSaving] = useState(false);
-  // Kurzer Hinweis, solange der Bon hochgeladen wird. Den weiteren Verlauf
-  // (Verarbeitung, Fehler) zeigt ReceiptJobsPanel in der ListView.
-  const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<DuplicatePrompt | null>(null);
   const [duplicateBusy, setDuplicateBusy] = useState(false);
 
-  // Unsichtbarer Datei-Input (öffnet mobil die Kamera) und Freitext-Zahlerfeld
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Freitext-Zahlerfeld (bei "Neue Person hinzufügen …")
   const newPayerInputRef = useRef<HTMLInputElement>(null);
 
   // Bekannte Personen der Liste: Zahler UND reine Mit-Esser aus bestehenden
@@ -178,8 +167,6 @@ function ExpenseForm({
     // Splitter auf faire Standardaufteilung zurücksetzen (Remount via key)
     setSplitterKey((key) => key + 1);
     setExpenseDate(todayIso());
-    // Hinweis vom letzten Bon-Upload verwerfen (wird bei Bedarf neu gesetzt)
-    setScanNotice(null);
   }
 
   // Geräte-Erkennung: gewählten/erstellten Namen für diese Liste merken.
@@ -269,54 +256,6 @@ function ExpenseForm({
     } finally {
       setSaving(false);
     }
-  }
-
-  function handleScanClick() {
-    // Das Backend braucht den Zahler, bevor die Datei ausgewählt wird
-    if (!payerName.trim()) {
-      setFormError(
-        'Bitte zuerst bei "Wer hat bezahlt?" einen Namen eintragen.',
-      );
-      return;
-    }
-    setFormError(null);
-    fileInputRef.current?.click();
-  }
-
-  // Fire & Forget (Roadmap 4.0 #2): Der Bon wird NICHT blockierend analysiert.
-  // Nach dem Upload (202 + job_id) übernimmt ReceiptJobsPanel die Anzeige: es
-  // zeigt "wird verarbeitet", fügt die fertige Ausgabe automatisch ein oder
-  // meldet einen Fehler (Bugfix 2026-09-25 – vorher scheiterten Scans still).
-  function handleReceiptSelected(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    // Input leeren, damit derselbe Bon direkt nochmal gewählt werden kann
-    event.target.value = "";
-    if (!file) return;
-
-    const payer = payerName.trim();
-    setFormError(null);
-    // Zahler auf dem Gerät merken/normalisieren (auch wenn die App gleich zugeht)
-    commitPayer(payer);
-
-    // resetForm() verwirft u. a. einen alten Hinweis – daher DANACH setzen.
-    resetForm();
-    setScanNotice("Beleg wird hochgeladen …");
-
-    uploadReceipt(listId, payer, file)
-      .then(() => {
-        setScanNotice(null);
-        onReceiptQueued();
-      })
-      .catch((error: unknown) => {
-        setScanNotice(null);
-        // Antwortet das Backend mit einem Fehler, läuft es – dann dessen Ursache
-        // zeigen statt der Rückfrage.
-        setFormError(
-          error instanceof ApiError
-            ? withReason("Der Beleg-Upload ist fehlgeschlagen", error)
-            : "Der Beleg-Upload ist fehlgeschlagen. Läuft das Backend?",
-        );
-      });
   }
 
   async function confirmDuplicate() {
@@ -504,34 +443,20 @@ function ExpenseForm({
             )}
           </button>
 
+          {/* Kassenbon-Scan ist vorübergehend abgeschaltet (kein Ollama mehr,
+              neues Konzept siehe AI_CONTEXT.md, Abschnitt 4.7). Der Button
+              bleibt sichtbar, ist aber grau, durchgestrichen und ohne Funktion. */}
           <button
             type="button"
-            onClick={handleScanClick}
-            disabled={saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-600 px-4 py-3 font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled
+            aria-disabled="true"
+            title="Kassenbon-Scan ist vorübergehend nicht verfügbar"
+            className="flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-gray-300 bg-gray-100 px-4 py-3 font-semibold text-gray-400"
           >
             <Camera className="h-5 w-5" />
-            Kassenbon scannen
+            <span className="line-through">Kassenbon scannen</span>
           </button>
         </div>
-
-        {/* Unsichtbarer Datei-Input: öffnet auf dem Handy direkt die Kamera */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleReceiptSelected}
-        />
-
-        {/* Hinweis während des Bon-Uploads (danach übernimmt ReceiptJobsPanel) */}
-        {scanNotice && (
-          <div className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-700">
-            <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
-            {scanNotice}
-          </div>
-        )}
 
         {formError && (
           <p className="mt-3 text-center text-sm text-red-600">{formError}</p>

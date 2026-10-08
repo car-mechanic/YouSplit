@@ -2,8 +2,8 @@ import type { Expense } from "./api";
 
 /**
  * Standard-Kategorien im Dropdown. Spiegel von `categories.DEFAULT_CATEGORIES`
- * im Backend (die Bon-KI wählt aus genau dieser Liste). "Sonstiges" ist der
- * Auffang-Wert, wenn nichts passt.
+ * im Backend (entfernt am 2026-10-08, die Liste lebt nur noch hier).
+ * "Sonstiges" ist der Auffang-Wert, wenn nichts passt.
  */
 export const DEFAULT_CATEGORIES = [
   "Lebensmittel",
@@ -17,7 +17,7 @@ export const DEFAULT_CATEGORIES = [
 
 export const FALLBACK_CATEGORY = "Sonstiges";
 
-/** Altwert ohne Kategorie (frühere manuelle Einträge, gescheiterte Scans). */
+/** Altwert ohne Kategorie (frühere manuelle Einträge). */
 export const UNCATEGORIZED = "Unknown/Manuell";
 
 /** Anzeigename einer Kategorie: der technische Altwert liest sich schlecht. */

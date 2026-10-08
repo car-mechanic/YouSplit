@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,8 +16,6 @@ setup_logging()
 
 import models  # noqa: E402,F401 — registriert die Tabellen bei Base.metadata
 from database import Base, engine, ensure_schema_updates  # noqa: E402
-from ollama_client import ensure_model_on_startup  # noqa: E402
-from receipt_jobs import fail_orphaned_jobs  # noqa: E402
 from routers import lists, members  # noqa: E402
 
 logger = logging.getLogger("yousplit.main")
@@ -30,20 +27,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     Base.metadata.create_all(bind=engine)
     # Neue Spalten an bestehenden Tabellen nachruesten (create_all kann das nicht)
     ensure_schema_updates()
-    # Scans, die beim letzten Stopp/Reload noch liefen, sind verloren (der
-    # BackgroundTask stirbt mit dem Prozess) → als fehlgeschlagen markieren,
-    # damit das Frontend nicht ewig "wird verarbeitet" anzeigt.
-    fail_orphaned_jobs()
-    # Modell-Check/Auto-Pull im Hintergrund — blockiert den Start NICHT (der
-    # Download kann Minuten dauern). Referenz halten, sonst raeumt der GC den
-    # Task evtl. vorzeitig ab.
-    model_task = asyncio.create_task(ensure_model_on_startup())
     logger.info("Backend gestartet.")
     yield
-    model_task.cancel()
 
 
-app = FastAPI(title="YouSplit AI Backend", lifespan=lifespan)
+app = FastAPI(title="YouSplit Backend", lifespan=lifespan)
 
 # Erlaubt dem Vite-Dev-Server (Port 5173), die API aufzurufen
 app.add_middleware(

@@ -37,7 +37,7 @@ export interface Expense {
   split_ratio: number;
   category: string;
   created_at: string; // ISO-8601, dient Sortierung + Duplikats-Prüfung
-  receipt_date: string | null; // nur bei gescannten Bons (ISO YYYY-MM-DD)
+  receipt_date: string | null; // Ausgabedatum (ISO YYYY-MM-DD)
   // Multi-Currency: Erfassungswährung + Tageskurs (EUR je 1 Einheit currency).
   // EUR-Betrag = amount * exchange_rate.
   currency: string;
@@ -61,8 +61,7 @@ export interface ExpenseCreate {
   payer_name: string;
   split_ratio: number;
   category?: string;
-  // Bon-Datum (ISO YYYY-MM-DD): beim erzwungenen Speichern eines gescannten
-  // Bons mitschicken, damit die Duplikats-Prüfung konsistent bleibt.
+  // Ausgabedatum (ISO YYYY-MM-DD), Grundlage der Duplikats-Prüfung.
   receipt_date?: string | null;
   // Erfassungswährung; der Kurs wird serverseitig ermittelt (nicht mitschicken).
   currency?: string;
@@ -237,99 +236,6 @@ export async function deleteExpense(
 ): Promise<void> {
   const response = await fetch(
     `${API_BASE_URL}/lists/${uuid}/expenses/${expenseId}`,
-    { method: "DELETE" },
-  );
-  await handleResponse<void>(response);
-}
-
-/** Antwort des asynchronen Bon-Uploads (Fire & Forget, HTTP 202). */
-export interface ReceiptUploadResult {
-  status: string;
-  /** ID des Status-Jobs – darüber verfolgt das Frontend den Fortschritt. */
-  job_id: string;
-}
-
-/**
- * Status eines Bon-Scans im Hintergrund (Bugfix 2026-09-25). Spiegelt
- * `ReceiptJobResponse` im Backend.
- */
-export type ReceiptJobStatus =
-  | "processing"
-  | "done"
-  | "failed"
-  /** Bon (Geschäft + Betrag + Datum) ist schon in der Liste – nichts angelegt. */
-  | "duplicate";
-
-export interface ReceiptJob {
-  id: string;
-  list_id: string;
-  payer_name: string;
-  filename: string | null;
-  status: ReceiptJobStatus;
-  /** Fortschritt 0–100 in Meilensteinen (siehe `receiptProgress.ts`). */
-  progress: number;
-  /** Erwartete Dauer der KI-Analyse in Sekunden (Schnitt der letzten Scans). */
-  estimated_seconds: number | null;
-  /** Optionaler Fortschritts-Hinweis (z. B. Modell-Download). */
-  detail: string | null;
-  /** Nutzerverständliche Fehlerursache bei status "failed". */
-  error: string | null;
-  expense_id: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
- * Kassenbon hochladen – „Fire & Forget“ (Roadmap 4.0 #2). Das Backend antwortet
- * sofort mit 202 + `job_id` und verarbeitet den Bon (OCR + fairer Split +
- * DB-Insert) im Hintergrund. Den Fortschritt liefert `getReceiptJobs`.
- */
-export async function uploadReceipt(
-  uuid: string,
-  payerName: string,
-  file: File,
-): Promise<ReceiptUploadResult> {
-  const formData = new FormData();
-  formData.append("payer_name", payerName);
-  formData.append("receipt", file);
-
-  const response = await fetch(`${API_BASE_URL}/lists/${uuid}/receipts`, {
-    method: "POST",
-    // Kein Content-Type-Header: den setzt der Browser selbst
-    // inklusive der multipart/form-data-Boundary
-    body: formData,
-  });
-  return handleResponse<ReceiptUploadResult>(response);
-}
-
-/** Alle noch nicht quittierten Bon-Scans einer Liste (neueste zuerst). */
-export async function getReceiptJobs(uuid: string): Promise<ReceiptJob[]> {
-  const response = await fetch(`${API_BASE_URL}/lists/${uuid}/receipt-jobs`);
-  return handleResponse<ReceiptJob[]>(response);
-}
-
-/**
- * „Trotzdem hinzufügen“ für einen Scan mit Status `duplicate`: legt die Ausgabe
- * aus den gespeicherten Bon-Daten an (keine erneute KI-Analyse).
- */
-export async function confirmDuplicateReceipt(
-  uuid: string,
-  jobId: string,
-): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/lists/${uuid}/receipt-jobs/${jobId}/confirm`,
-    { method: "POST" },
-  );
-  await handleResponse<unknown>(response);
-}
-
-/** Quittiert (löscht) einen Bon-Scan-Job – erledigt oder verworfen. */
-export async function dismissReceiptJob(
-  uuid: string,
-  jobId: string,
-): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/lists/${uuid}/receipt-jobs/${jobId}`,
     { method: "DELETE" },
   );
   await handleResponse<void>(response);

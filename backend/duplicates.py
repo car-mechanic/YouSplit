@@ -1,10 +1,10 @@
-"""Duplikats-Erkennung fuer gescannte Bons (reine Logik, ohne DB).
+"""Duplikats-Erkennung fuer Ausgaben (reine Logik, ohne DB).
 
-Ein gescannter Bon gilt als Duplikat, wenn in der Liste schon eine Ausgabe mit
+Eine Ausgabe gilt als Duplikat, wenn in der Liste schon eine Ausgabe mit
 **gleichem Geschaeft, gleichem Betrag und gleichem Datum** existiert. Betrag und
 Datum vergleicht der Router exakt (Betrag auf Cent gerundet); hier steckt nur der
-unscharfe Geschaeftsvergleich. Er muss unscharf sein, weil das Vision-Modell
-denselben Bon bei zwei Scans leicht unterschiedlich benennen kann
+unscharfe Geschaeftsvergleich. Er muss unscharf sein, weil derselbe Bon
+leicht unterschiedlich benannt sein kann
 ("REWE" vs. "Rewe Markt GmbH").
 """
 
@@ -18,7 +18,7 @@ MIN_SIMILARITY = 0.75
 MIN_CONTAINED_LENGTH = 3
 
 _NON_ALNUM = re.compile(r"[^0-9a-zäöüß]+")
-# Rechtsform-/Fuellwoerter, die zwischen zwei Scans desselben Bons schwanken.
+# Rechtsform-/Fuellwoerter, die zwischen zwei Schreibweisen desselben Geschaefts schwanken.
 _NOISE_WORDS = frozenset(
     {"gmbh", "ag", "kg", "ohg", "co", "markt", "filiale", "fil", "shop", "store"}
 )

@@ -1,5 +1,4 @@
 import math
-import re
 import uuid
 from datetime import date, datetime
 
@@ -84,68 +83,18 @@ def _normalize_currency(value: object) -> str:
     return code
 
 
-def _parse_flexible_date(value: object) -> date | None:
-    """Wandelt gaengige Datumsformate in ein ``date`` — oder ``None``.
-
-    Genutzt fuer das von der Vision-KI gelesene Bon-Datum: Modelle liefern es
-    trotz Prompt mal als ISO ("2026-07-18"), mal deutsch ("18.07.2026") und
-    gelegentlich mit angehaengter Uhrzeit. Ist der Wert unlesbar, geben wir
-    bewusst ``None`` zurueck, statt den ganzen Scan an einem fehlenden Datum
-    scheitern zu lassen.
-    """
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if not isinstance(value, str):
-        return None
-
-    raw = value.strip()
-    if not raw:
-        return None
-    # Eine evtl. angehaengte Uhrzeit abschneiden ("2026-07-18 14:30" / "...T...")
-    raw = raw.replace("T", " ").split(" ", 1)[0]
-    for fmt in ("%Y-%m-%d", "%d.%m.%Y", "%d.%m.%y", "%d/%m/%Y", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(raw, fmt).date()
-        except ValueError:
-            continue
-    return None
-
-
-_NOT_AMOUNT_CHARS = re.compile(r"[^\d.,-]")
-
-
-def _normalize_amount_text(raw: str) -> str:
-    """Macht aus einem Betrags-Text der Vision-KI einen ``float``-lesbaren String.
-
-    Modelle liefern den Betrag trotz Prompt gern als Text: "24,50 €", "1.234,56",
-    "CHF 12.50". Waehrungszeichen und Leerraum fliegen raus. Kommen Punkt UND
-    Komma vor, ist das letzte der beiden das Dezimalzeichen, das andere gliedert
-    Tausender ("1.234,56" und "1,234.56" → "1234.56"). Ein einzelnes Komma ist
-    das deutsche Dezimalkomma.
-    """
-    text = _NOT_AMOUNT_CHARS.sub("", raw).strip(".,")
-    if "," in text and "." in text:
-        thousands = "." if text.rfind(",") > text.rfind(".") else ","
-        text = text.replace(thousands, "")
-    return text.replace(",", ".")
-
-
 # ---------- Expenses ----------
 
 class ExpenseCreate(BaseModel):
-    """Request-Body zum Anlegen einer Ausgabe (manuell oder erzwungener Scan)."""
+    """Request-Body zum Anlegen einer Ausgabe."""
 
     title: str = Field(min_length=1, max_length=200)
     amount: float = Field(gt=0, allow_inf_nan=False)
     payer_name: str = Field(min_length=1, max_length=100)
     split_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
     category: str = Field(default="Unknown/Manuell", min_length=1, max_length=100)
-    # Bon-Datum vom Scan: erlaubt der Duplikats-Pruefung, denselben Bon auch an
-    # einem anderen Tag zu erkennen. Bei rein manueller Eingabe ``None``.
+    # Ausgabedatum (Datum auf dem Bon bzw. der Buchung). Grundlage der
+    # Duplikats-Pruefung; ``None`` = Anlagetag.
     receipt_date: date | None = None
     # Erfassungswaehrung (Roadmap 2.0 #3). Der Kurs (exchange_rate) wird NICHT vom
     # Client geschickt, sondern serverseitig tagesaktuell ermittelt.
@@ -219,7 +168,7 @@ class ExpenseResponse(BaseModel):
     split_ratio: float
     category: str
     created_at: datetime
-    # Nur bei gescannten Bons gesetzt (siehe ExpenseCreate.receipt_date)
+    # Ausgabedatum (siehe ExpenseCreate.receipt_date); bei Altdaten None
     receipt_date: date | None = None
     # Multi-Currency: Erfassungswaehrung + Tageskurs (EUR je 1 Einheit currency).
     # Der EUR-Betrag ergibt sich im Frontend als amount * exchange_rate.
@@ -284,53 +233,6 @@ class SharedListResponse(BaseModel):
         return [] if value is None else value
 
 
-# ---------- Kassenbon-Analyse (Ollama) ----------
-
-class ReceiptAnalysis(BaseModel):
-    """Das JSON, das die Vision-KI für einen Kassenbon liefern muss.
-
-    Das Modell liefert das Kaufdatum unter dem JSON-Key ``date``; intern heisst
-    das Feld ``receipt_date`` (per Alias), damit der Bezeichner nicht den
-    importierten ``date``-Typ verschattet.
-    """
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    title: str
-    amount: float = Field(gt=0, allow_inf_nan=False)
-    # Kaufdatum vom Bon. Wird zwingend angefragt, aber tolerant behandelt:
-    # ist es unlesbar, bleibt es None (der Scan schlaegt deshalb NICHT fehl).
-    receipt_date: date | None = Field(default=None, alias="date")
-    category: str
-    # Waehrung vom Bon (Roadmap 2.0 #3). Tolerant: Unbekanntes/Fehlendes faellt
-    # auf EUR zurueck, damit der Scan nicht an der Waehrung scheitert.
-    currency: str = "EUR"
-
-    @field_validator("amount", mode="before")
-    @classmethod
-    def parse_german_amount(cls, value: object) -> object:
-        # Vision-Modelle liefern den Betrag trotz Prompt gern als String
-        # wie "24,50 €" oder "1.234,56" — das hier rettet solche Antworten
-        if isinstance(value, str):
-            return _normalize_amount_text(value)
-        return value
-
-    @field_validator("currency", mode="before")
-    @classmethod
-    def normalize_or_fallback_currency(cls, value: object) -> str:
-        # Nicht unterstuetzte/leere Waehrung → EUR (Scan bleibt robust)
-        if value is None:
-            return "EUR"
-        code = str(value).strip().upper()
-        return code if code in SUPPORTED_CURRENCIES else "EUR"
-
-    @field_validator("receipt_date", mode="before")
-    @classmethod
-    def parse_receipt_date(cls, value: object) -> date | None:
-        # Toleriert ISO, deutsches TT.MM.JJJJ und angehaengte Uhrzeiten
-        return _parse_flexible_date(value)
-
-
 # ---------- Kassensturz / Settlement (N Personen) ----------
 
 class SettlementTransaction(BaseModel):
@@ -388,37 +290,6 @@ class CategoryRuleResponse(BaseModel):
     list_id: uuid.UUID
     recipient_keyword: str
     category: str
-
-
-# ---------- Bon-Scan-Status (Receipt-Jobs, Bugfix 2026-09-25) ----------
-
-class ReceiptUploadResponse(BaseModel):
-    """Sofort-Antwort (HTTP 202) des asynchronen Bon-Uploads."""
-
-    status: str
-    job_id: uuid.UUID
-
-
-class ReceiptJobResponse(BaseModel):
-    """Status eines Bon-Scans — vom Frontend per Polling abgefragt."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    list_id: uuid.UUID
-    payer_name: str
-    filename: str | None = None
-    status: str  # "processing" | "done" | "failed" | "duplicate"
-    # Fortschritt 0–100 in Meilensteinen (siehe receipt_jobs.PROGRESS_*)
-    progress: int = 0
-    # Erwartete Dauer der KI-Analyse in Sekunden (Durchschnitt der letzten Scans);
-    # das Frontend schaetzt damit den Fortschritt zwischen zwei Meilensteinen.
-    estimated_seconds: int | None = None
-    detail: str | None = None
-    error: str | None = None
-    expense_id: uuid.UUID | None = None
-    created_at: datetime
-    updated_at: datetime
 
 
 # ---------- Kontoauszug-Import (Epic 4.0 #3) ----------

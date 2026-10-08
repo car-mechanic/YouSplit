@@ -77,8 +77,8 @@ function ExpenseList({
           <div>
             <p className="font-semibold text-gray-900">Noch keine Ausgaben</p>
             <p className="mt-1 text-sm text-gray-500">
-              Trage die erste Ausgabe ein oder scanne einen Kassenbon – der
-              Kassensturz rechnet den Rest.
+              Trage die erste Ausgabe ein – der Kassensturz rechnet den
+              Rest.
             </p>
           </div>
           <button

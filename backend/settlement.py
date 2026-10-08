@@ -10,7 +10,7 @@ Aufteilungs-Konvention:
   Person verbraucht ihren hinterlegten Betrag (der Zahler evtl. 0). Betraege
   stehen in der Erfassungswaehrung und werden ueber ``exchange_rate`` in EUR
   umgerechnet.
-- **Fallback ``split_ratio``:** Ohne ``splits`` (Altdaten, gescannte Bons) traegt
+- **Fallback ``split_ratio``:** Ohne ``splits`` (Altdaten) traegt
   der Zahler ``split_ratio`` selbst; der Rest ``(1 - split_ratio)`` wird zu
   gleichen Teilen auf die **anderen** Personen verteilt. Fuer genau 2 Personen
   ergibt das exakt das alte 2-Personen-Verhalten. Ist der Zahler die einzige

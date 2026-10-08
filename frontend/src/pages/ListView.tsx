@@ -14,7 +14,6 @@ import ConfirmDialog from "../components/ConfirmDialog";
 import EditExpenseModal from "../components/EditExpenseModal";
 import ExpenseForm from "../components/ExpenseForm";
 import ExpenseList from "../components/ExpenseList";
-import ReceiptJobsPanel from "../components/ReceiptJobsPanel";
 import BankStatementView from "../components/BankStatementView";
 import ListHeader from "../components/ListHeader";
 import ListTutorial from "../components/ListTutorial";
@@ -28,7 +27,6 @@ import { categoryOptions } from "../categories";
 import { collectParticipants } from "../participants";
 import { addRecentList } from "../recentLists";
 import { markTutorialDone, shouldShowTutorial } from "../tutorialStorage";
-import { useReceiptJobs } from "../useReceiptJobs";
 
 /**
  * Detailseite einer geteilten Liste (Route /list/:id).
@@ -90,18 +88,6 @@ function ListView() {
       })
       .catch(() => setLoadError("Liste nicht gefunden. Ist der Link korrekt?"));
   }, [id]);
-
-  // Bon-Scans im Hintergrund verfolgen (Bugfix 2026-09-25): Ist ein Scan
-  // fertig, die Liste frisch laden – die neue Ausgabe erscheint so automatisch
-  // (und der Kassensturz rechnet über die list-Änderung neu).
-  const receiptJobs = useReceiptJobs(id, () => {
-    if (!id) return;
-    getList(id)
-      .then(setList)
-      .catch(() => {
-        // Nachladen ist Komfort – bei Fehler bleibt der alte Stand sichtbar
-      });
-  });
 
   // Kassensturz vom Backend holen – neu bei jeder Änderung der Ausgabenliste.
   // Das vorige Ergebnis bleibt während des Nachladens sichtbar (kein Flackern).
@@ -254,14 +240,7 @@ function ListView() {
             expenses={list.expenses}
             members={list.members}
             onExpenseAdded={handleExpenseAdded}
-            onReceiptQueued={receiptJobs.refresh}
             titleInputRef={titleInputRef}
-          />
-
-          <ReceiptJobsPanel
-            jobs={receiptJobs.jobs}
-            onDismiss={receiptJobs.dismiss}
-            onConfirmDuplicate={receiptJobs.confirmDuplicate}
           />
 
           {actionError && (

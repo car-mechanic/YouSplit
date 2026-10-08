@@ -9,9 +9,9 @@
 [`AI_CONTEXT.md`](./AI_CONTEXT.md).** Dort stehen:
 
 - **Projekt-Übersicht & Tech-Stack** (React/TS-Frontend, FastAPI-Backend,
-  PostgreSQL, lokales Ollama `qwen2.5vl:3b`, Docker Compose)
+  PostgreSQL, Docker Compose; Ollama/Kassenbon-Scan seit 2026-10-08 entfernt)
 - **Architektur-Richtlinien** (Zusammenspiel der Services, Datenmodell,
-  Endpunkte, Kassenbon-Scan-Ablauf, Kassensturz-Logik)
+  Endpunkte, Kassensturz-Logik; alter Scan-Ablauf nur noch als Referenz)
 - **Coding-Standards** (Clean Code, **deutsche Kommentare**, Modulstruktur)
 - **Aktueller Status & Roadmap** inkl. bekannter Tech-Debt
 
@@ -23,8 +23,8 @@ Roadmap-Punkte). Sie ist das dauerhafte Gedächtnis des Projekts.
 
 ```bash
 docker compose up --build
-# Erststart: einmalig das Vision-Modell laden
-docker compose exec ollama ollama pull qwen2.5vl:3b
+# Einmalig nach der Ollama-Entfernung: verwaisten Container aufräumen
+docker compose up --build --remove-orphans
 ```
 
 Frontend: http://localhost:5173 · Backend/Docs: http://localhost:8000/docs

@@ -15,46 +15,19 @@ services:
       timeout: 5s
       retries: 5
 
-  ollama:
-    # Laeuft hier bewusst auf der CPU — dieser sichere Default startet auf JEDEM
-    # Host. Fuer NVIDIA-GPU-Beschleunigung das Override `docker-compose.gpu.yml`
-    # dazuschalten (siehe .env / COMPOSE_FILE). Ohne GPU einfach nichts tun.
-    image: ollama/ollama:latest
-    environment:
-      # Ressourcen-Schonung (Roadmap 4.0 #1): Modell schon nach 1 Minute
-      # Inaktivitaet wieder aus dem RAM werfen (~4 GB) — wichtig auf einem
-      # kleinen Server. Kehrseite: der naechste Scan nach einer Pause laedt das
-      # Modell erst neu (dauert wieder minutenlang). Passt zur asynchronen
-      # "Fire & Forget"-Verarbeitung, bei der niemand mehr aktiv wartet.
-      OLLAMA_KEEP_ALIVE: 1m
-    volumes:
-      # Modelle ueberleben Container-Neustarts (qwen2.5vl:3b ist ~3 GB)
-      - ollama_models:/root/.ollama
-    ports:
-      - "11434:11434"
-
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://yousplit:yousplit@db:5432/yousplit
-      OLLAMA_URL: http://ollama:11434
-      # llama3.2-vision (mllama) wird von aktuellen Ollama-Versionen nicht
-      # mehr unterstuetzt. qwen2.5vl:3b ist auf CPU deutlich schneller als der
-      # Test mit qwen3.5:2b (2026-10-02) und bleibt deshalb der Standard.
-      OLLAMA_MODEL: qwen2.5vl:3b
-      # CPU-Inferenz eines Bons dauert 2-4 Minuten — grosszuegig warten
-      OLLAMA_TIMEOUT_SECONDS: "480"
-      # Log-Level des Backends (DEBUG zeigt z. B. auch rohe KI-Antworten)
+      # Log-Level des Backends
       LOG_LEVEL: INFO
     volumes:
       - ./backend:/app
     depends_on:
       db:
         condition: service_healthy
-      ollama:
-        condition: service_started
 
   frontend:
     build: ./frontend
@@ -70,4 +43,3 @@ services:
 
 volumes:
   postgres_data:
-  ollama_models:
