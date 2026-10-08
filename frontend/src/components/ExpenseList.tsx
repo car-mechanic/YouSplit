@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { ArrowUpDown, Plus, Receipt } from "lucide-react";
 import type { Expense } from "../api";
+import { sortExpenses } from "../expenseSort";
+import type { SortKey } from "../expenseSort";
 import ExpenseListItem from "./ExpenseListItem";
-
-type SortKey = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
 
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "date-desc", label: "Neueste zuerst" },
@@ -34,38 +34,24 @@ function ExpenseList({
 }: ExpenseListProps) {
   const [sortKey, setSortKey] = useState<SortKey>("date-desc");
 
-  // Sortierte Kopie (mutiert die Prop nicht). Nach Datum wird über den
-  // ISO-String von created_at sortiert – der ist lexikografisch =
-  // chronologisch, spart also das Parsen zu Date-Objekten.
-  const sortedExpenses = useMemo(() => {
-    const items = [...expenses];
-    items.sort((a, b) => {
-      switch (sortKey) {
-        case "date-asc":
-          return a.created_at.localeCompare(b.created_at);
-        case "amount-desc":
-          return b.amount - a.amount;
-        case "amount-asc":
-          return a.amount - b.amount;
-        case "date-desc":
-        default:
-          return b.created_at.localeCompare(a.created_at);
-      }
-    });
-    return items;
-  }, [expenses, sortKey]);
+  const sortedExpenses = useMemo(
+    () => sortExpenses(expenses, sortKey),
+    [expenses, sortKey],
+  );
 
   return (
     <section className="mt-6 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+      {/* flex-wrap: auf schmalen Screens rutscht die Sortierung unter die
+          Überschrift, statt sie umzubrechen und rechts überzustehen */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-gray-100 px-4 py-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold whitespace-nowrap text-gray-900">
           <Receipt className="h-5 w-5 text-emerald-600" />
           Bisherige Ausgaben
         </h2>
 
         {/* Sortier-Auswahl erst ab 2 Einträgen sinnvoll */}
         {expenses.length > 1 && (
-          <label className="flex items-center gap-1.5 text-sm text-gray-500">
+          <label className="ml-auto flex items-center gap-1.5 text-sm text-gray-500">
             <ArrowUpDown className="h-4 w-4" />
             <span className="sr-only">Sortieren nach</span>
             <select
@@ -105,7 +91,7 @@ function ExpenseList({
           </button>
         </div>
       ) : (
-        <ul className="max-h-[60vh] space-y-3 overflow-y-auto bg-gray-50 p-4">
+        <ul className="max-h-[60vh] space-y-3 overflow-y-auto bg-gray-50 p-2 sm:p-4">
           {sortedExpenses.map((expense) => (
             <ExpenseListItem
               key={expense.id}

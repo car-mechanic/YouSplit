@@ -22,7 +22,7 @@ interface UseReceiptJobsResult {
 /**
  * Verfolgt die asynchronen Bon-Scans einer Liste (Bugfix 2026-09-25).
  *
- * Hintergrund: Seit dem „Fire & Forget"-Upload (Roadmap 4.0 #2) bekam das
+ * Hintergrund: Seit dem „Fire & Forget“-Upload (Roadmap 4.0 #2) bekam das
  * Frontend nur ein 202 zurück – ob der Scan im Hintergrund klappte, erfuhr der
  * Nutzer nie. Dieser Hook fragt den Status per Polling ab:
  *

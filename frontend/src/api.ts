@@ -50,6 +50,8 @@ export interface SharedList {
   id: string;
   title: string;
   created_at: string;
+  /** Feste Personen der Liste (aus dem Tutorial); leer bei Altlisten. */
+  members: string[];
   expenses: Expense[];
 }
 
@@ -81,15 +83,6 @@ export interface ExpenseUpdate {
   splits?: Splits | null;
 }
 
-/** Die vom Backend beim Scan-Duplikat mitgelieferte KI-Analyse. */
-export interface DuplicateAnalysis {
-  title: string;
-  amount: number;
-  date: string | null; // Bon-Datum (ISO YYYY-MM-DD) oder null
-  category: string;
-  currency: string;
-}
-
 // ---------- Kassensturz / Settlement (N Personen) ----------
 
 /** Eine einzelne Ausgleichszahlung: from_person zahlt an to_person. */
@@ -113,48 +106,64 @@ export interface Settlement {
 }
 
 /**
- * Wird geworfen, wenn das Backend ein Duplikat meldet (HTTP 409).
- * `analysis` ist nur beim Bon-Scan gesetzt – so kann das Frontend die
- * Ausgabe erzwungen speichern, ohne den Bon erneut von der KI lesen zu lassen.
+ * Fehlerantwort des Backends (HTTP-Status >= 400). Netzwerkfehler (Backend nicht
+ * erreichbar) wirft `fetch` selbst als `TypeError` – daran lassen sich beide
+ * Fälle unterscheiden.
  */
-export class DuplicateError extends Error {
-  readonly analysis?: DuplicateAnalysis;
+export class ApiError extends Error {
+  readonly status: number;
+  /** Ursache aus FastAPIs `{"detail": "..."}` – nutzerverständlich, deutsch. */
+  readonly detail: string | null;
 
-  constructor(message: string, analysis?: DuplicateAnalysis) {
-    super(message);
-    this.name = "DuplicateError";
-    this.analysis = analysis;
+  constructor(status: number, detail: string | null) {
+    super(detail ?? `API-Fehler ${status}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
   }
+}
+
+/** Das Backend meldet ein Duplikat (HTTP 409). */
+export class DuplicateError extends ApiError {
+  constructor(detail: string | null) {
+    super(409, detail);
+    this.name = "DuplicateError";
+  }
+}
+
+/**
+ * Hängt die vom Backend gemeldete Ursache an eine Fehlermeldung an, z. B.
+ * "Ausgabe konnte nicht gespeichert werden: Wechselkurs für USD nicht abrufbar".
+ * Ohne Ursache (Netzwerkfehler, 422 mit Feldliste) bleibt es bei `message`.
+ */
+export function withReason(message: string, error: unknown): string {
+  return error instanceof ApiError && error.detail
+    ? `${message}: ${error.detail}`
+    : `${message}.`;
 }
 
 // ---------- Helpers ----------
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (response.ok) {
-    // 204 No Content (z.B. DELETE) hat keinen Body
+    // 204 No Content (z. B. DELETE) hat keinen Body
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
 
   const body = await response.text();
-  let detail: string | undefined;
-  let analysis: DuplicateAnalysis | undefined;
+  let detail: string | null = null;
   try {
-    // FastAPI packt die Fehlerursache in {"detail": "..."};
-    // beim Scan-Duplikat zusätzlich {"analysis": {...}}
-    const parsed = JSON.parse(body) as {
-      detail?: unknown;
-      analysis?: DuplicateAnalysis;
-    };
+    // FastAPI packt die Fehlerursache in {"detail": "..."}; bei 422 ist
+    // detail eine Feldliste (kein String) und bleibt hier unberücksichtigt
+    const parsed = JSON.parse(body) as { detail?: unknown };
     if (typeof parsed.detail === "string") detail = parsed.detail;
-    if (parsed.analysis) analysis = parsed.analysis;
   } catch {
     // Body war kein JSON — dann reicht der Statuscode
   }
 
-  const message = detail ?? `API-Fehler ${response.status}`;
-  if (response.status === 409) throw new DuplicateError(message, analysis);
-  throw new Error(message);
+  if (response.status === 409) throw new DuplicateError(detail);
+  throw new ApiError(response.status, detail);
 }
 
 // ---------- API-Funktionen ----------
@@ -170,6 +179,19 @@ export async function createList(title: string): Promise<SharedList> {
 
 export async function getList(uuid: string): Promise<SharedList> {
   const response = await fetch(`${API_BASE_URL}/lists/${uuid}`);
+  return handleResponse<SharedList>(response);
+}
+
+/** Personen der Liste ersetzen (Namen werden im Backend getrimmt/entdoppelt). */
+export async function setMembers(
+  uuid: string,
+  members: string[],
+): Promise<SharedList> {
+  const response = await fetch(`${API_BASE_URL}/lists/${uuid}/members`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ members }),
+  });
   return handleResponse<SharedList>(response);
 }
 
@@ -258,7 +280,7 @@ export interface ReceiptJob {
 }
 
 /**
- * Kassenbon hochladen – „Fire & Forget" (Roadmap 4.0 #2). Das Backend antwortet
+ * Kassenbon hochladen – „Fire & Forget“ (Roadmap 4.0 #2). Das Backend antwortet
  * sofort mit 202 + `job_id` und verarbeitet den Bon (OCR + fairer Split +
  * DB-Insert) im Hintergrund. Den Fortschritt liefert `getReceiptJobs`.
  */

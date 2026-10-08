@@ -1,3 +1,5 @@
+import math
+import re
 import uuid
 from datetime import date, datetime
 
@@ -37,8 +39,12 @@ def _validate_splits(value: object) -> dict[str, float] | None:
         if not key:
             raise ValueError("splits enthaelt einen leeren Namen")
         amount = float(share)
-        if amount < 0:
-            raise ValueError(f"splits-Betrag fuer '{key}' darf nicht negativ sein")
+        # NaN/Infinity kaemen sonst durch (nan < 0 ist False) und wuerden den
+        # Kassensturz der ganzen Liste auf NaN ziehen.
+        if not math.isfinite(amount) or amount < 0:
+            raise ValueError(
+                f"splits-Betrag fuer '{key}' muss eine endliche Zahl >= 0 sein"
+            )
         result[key] = amount
     return result
 
@@ -109,16 +115,35 @@ def _parse_flexible_date(value: object) -> date | None:
     return None
 
 
+_NOT_AMOUNT_CHARS = re.compile(r"[^\d.,-]")
+
+
+def _normalize_amount_text(raw: str) -> str:
+    """Macht aus einem Betrags-Text der Vision-KI einen ``float``-lesbaren String.
+
+    Modelle liefern den Betrag trotz Prompt gern als Text: "24,50 €", "1.234,56",
+    "CHF 12.50". Waehrungszeichen und Leerraum fliegen raus. Kommen Punkt UND
+    Komma vor, ist das letzte der beiden das Dezimalzeichen, das andere gliedert
+    Tausender ("1.234,56" und "1,234.56" → "1234.56"). Ein einzelnes Komma ist
+    das deutsche Dezimalkomma.
+    """
+    text = _NOT_AMOUNT_CHARS.sub("", raw).strip(".,")
+    if "," in text and "." in text:
+        thousands = "." if text.rfind(",") > text.rfind(".") else ","
+        text = text.replace(thousands, "")
+    return text.replace(",", ".")
+
+
 # ---------- Expenses ----------
 
 class ExpenseCreate(BaseModel):
     """Request-Body zum Anlegen einer Ausgabe (manuell oder erzwungener Scan)."""
 
     title: str = Field(min_length=1, max_length=200)
-    amount: float = Field(gt=0)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     payer_name: str = Field(min_length=1, max_length=100)
     split_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
-    category: str = "Unknown/Manuell"
+    category: str = Field(default="Unknown/Manuell", min_length=1, max_length=100)
     # Bon-Datum vom Scan: erlaubt der Duplikats-Pruefung, denselben Bon auch an
     # einem anderen Tag zu erkennen. Bei rein manueller Eingabe ``None``.
     receipt_date: date | None = None
@@ -154,7 +179,7 @@ class ExpenseUpdate(BaseModel):
     """
 
     title: str = Field(min_length=1, max_length=200)
-    amount: float = Field(gt=0)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     payer_name: str = Field(min_length=1, max_length=100)
     split_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
     category: str = Field(min_length=1, max_length=100)
@@ -207,8 +232,38 @@ class ExpenseResponse(BaseModel):
 
 # ---------- Listen ----------
 
+MAX_MEMBERS = 50
+
+
+def _normalize_members(value: list[str]) -> list[str]:
+    """Namen trimmen, Leere weglassen, Doppelte (gleiche Schreibweise) entfernen.
+
+    Die Reihenfolge bleibt: sie ist die Reihenfolge im Splitter und Kassensturz.
+    """
+    members: list[str] = []
+    for raw in value:
+        name = raw.strip()
+        if not name or name in members:
+            continue
+        if len(name) > 100:
+            raise ValueError(f"Name zu lang (max. 100 Zeichen): '{name[:20]}…'")
+        members.append(name)
+    return members
+
+
 class SharedListCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
+
+
+class MembersUpdate(BaseModel):
+    """Request-Body von ``PUT /lists/{id}/members``: die Personen der Liste."""
+
+    members: list[str] = Field(max_length=MAX_MEMBERS)
+
+    @field_validator("members")
+    @classmethod
+    def normalize(cls, value: list[str]) -> list[str]:
+        return _normalize_members(value)
 
 
 class SharedListResponse(BaseModel):
@@ -219,7 +274,14 @@ class SharedListResponse(BaseModel):
     id: uuid.UUID
     title: str
     created_at: datetime
+    # Feste Personen der Liste (leer bei Altlisten ohne Tutorial)
+    members: list[str] = []
     expenses: list[ExpenseResponse] = []
+
+    @field_validator("members", mode="before")
+    @classmethod
+    def none_as_empty(cls, value: object) -> object:
+        return [] if value is None else value
 
 
 # ---------- Kassenbon-Analyse (Ollama) ----------
@@ -235,7 +297,7 @@ class ReceiptAnalysis(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     title: str
-    amount: float = Field(gt=0)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     # Kaufdatum vom Bon. Wird zwingend angefragt, aber tolerant behandelt:
     # ist es unlesbar, bleibt es None (der Scan schlaegt deshalb NICHT fehl).
     receipt_date: date | None = Field(default=None, alias="date")
@@ -248,9 +310,9 @@ class ReceiptAnalysis(BaseModel):
     @classmethod
     def parse_german_amount(cls, value: object) -> object:
         # Vision-Modelle liefern den Betrag trotz Prompt gern als String
-        # wie "24,50" oder "24,50 €" — das hier rettet solche Antworten
+        # wie "24,50 €" oder "1.234,56" — das hier rettet solche Antworten
         if isinstance(value, str):
-            return value.replace("€", "").replace("EUR", "").strip().replace(",", ".")
+            return _normalize_amount_text(value)
         return value
 
     @field_validator("currency", mode="before")
@@ -394,7 +456,7 @@ class BankImportItem(BaseModel):
     """Eine zu uebernehmende Buchung (positiver Betrag, immer EUR)."""
 
     title: str = Field(min_length=1, max_length=200)
-    amount: float = Field(gt=0)
+    amount: float = Field(gt=0, allow_inf_nan=False)
     booking_date: date | None = None
 
 

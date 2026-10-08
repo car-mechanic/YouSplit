@@ -2,7 +2,7 @@ import { useImperativeHandle, useMemo, useState } from "react";
 import type { Ref } from "react";
 import { Lock, Unlock } from "lucide-react";
 import type { Splits } from "../api";
-import { formatMoney } from "../format";
+import { formatMoney, parseAmount } from "../format";
 import {
   clampValue,
   convertMode,
@@ -85,6 +85,18 @@ function AdvancedSplitter({
       : fairEntries(participants, "percent", amount),
   );
 
+  // Stand der Aufteilung nach der letzten Änderung, die NICHT vom Gesamtbetrag
+  // kam. Im Betrag-Modus wird bei jedem neuen Gesamtbetrag von hier aus
+  // gerechnet, nicht vom zuletzt angezeigten Stand: Beim Tippen läuft der Betrag
+  // über Zwischenwerte ("100" → "" → "1" → "11" → "110"), und über die
+  // gerundeten Zwischenstände ginge das Verhältnis (70/30) verloren.
+  const [basis, setBasis] = useState(entries);
+
+  function commitEntries(next: SplitEntry[]) {
+    setEntries(next);
+    setBasis(next);
+  }
+
   // Reagiert (in der Render-Phase, ohne Effekt) auf geänderte Teilnehmer bzw. –
   // im Betrag-Modus – einen geänderten Gesamtbetrag und balanciert neu aus.
   // JSON.stringify als Signatur: robust gegen Namen mit Sonderzeichen (keine
@@ -92,10 +104,12 @@ function AdvancedSplitter({
   const participantsSig = JSON.stringify(participants);
   const [reconcile, setReconcile] = useState({ sig: participantsSig, amount });
   if (reconcile.sig !== participantsSig) {
-    setEntries((prev) => syncEntries(prev, participants, mode, amount));
+    commitEntries(syncEntries(entries, participants, mode, amount));
     setReconcile({ sig: participantsSig, amount });
   } else if (mode === "amount" && reconcile.amount !== amount) {
-    setEntries((prev) => redistributeUnlocked(prev, mode, amount));
+    // Leeres/ungültiges Betragsfeld (0): Anzeige stehen lassen statt alles auf
+    // 0 zu setzen.
+    if (amount > 0) setEntries(redistributeUnlocked(basis, mode, amount));
     setReconcile({ sig: participantsSig, amount });
   }
 
@@ -114,30 +128,33 @@ function AdvancedSplitter({
   );
 
   function handleModeChange(next: SplitMode) {
-    setEntries((prev) => convertMode(prev, mode, next, amount));
+    commitEntries(convertMode(entries, mode, next, amount));
     setMode(next);
   }
 
   // Nutzer setzt einen Wert manuell → Person locken (außer im Anteile-Modus) und
   // den Rest neu auf die Ungelockten verteilen.
   function applyEdit(index: number, value: number) {
-    setEntries((prev) => {
-      const next = prev.map((entry, i) =>
-        i === index
-          ? { ...entry, value, locked: mode === "shares" ? entry.locked : true }
-          : entry,
-      );
-      return mode === "shares" ? next : redistributeUnlocked(next, mode, amount);
-    });
+    const next = entries.map((entry, i) =>
+      i === index
+        ? { ...entry, value, locked: mode === "shares" ? entry.locked : true }
+        : entry,
+    );
+    commitEntries(
+      mode === "shares" ? next : redistributeUnlocked(next, mode, amount),
+    );
   }
 
+  // Fixieren lässt die Übrigen in ihrem Verhältnis. Freigeben heißt "wieder
+  // automatisch fair": dann teilen sich alle Ungelockten den Rest gleichmäßig.
   function toggleLock(index: number) {
-    setEntries((prev) => {
-      const next = prev.map((entry, i) =>
-        i === index ? { ...entry, locked: !entry.locked } : entry,
-      );
-      return redistributeUnlocked(next, mode, amount);
-    });
+    const unlocking = entries[index].locked;
+    const next = entries.map((entry, i) =>
+      i === index ? { ...entry, locked: !entry.locked } : entry,
+    );
+    commitEntries(
+      redistributeUnlocked(next, mode, amount, unlocking ? "even" : "keep-ratio"),
+    );
   }
 
   // Live-Statuszeile: Summe der Eingabewerte vs. Soll (100 % bzw. Betrag).
@@ -195,8 +212,8 @@ function AdvancedSplitter({
       {participants.length > 0 && (
         <div className="mt-3 flex items-center justify-between text-xs">
           <span className="text-gray-400">
-            Tipp: Ein Wert, den du änderst, bleibt fix – der Rest verteilt sich
-            gleichmäßig.
+            Tipp: Ein Wert, den du änderst, bleibt fix – die anderen teilen
+            sich den Rest.
           </span>
           {mode !== "shares" && (
             <span
@@ -252,7 +269,7 @@ function SplitRow({
   }
 
   function commit() {
-    const parsed = Number.parseFloat(text.replace(",", "."));
+    const parsed = parseAmount(text);
     const clamped = clampValue(Number.isNaN(parsed) ? 0 : parsed, mode, amount);
     setText(formatValue(clamped, mode));
     onCommit(clamped);
@@ -261,8 +278,10 @@ function SplitRow({
   const locked = mode !== "shares" && entry.locked;
 
   return (
-    <li className="flex items-center gap-2">
-      <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm text-gray-700">
+    // Schmale Screens: Name in eigener Zeile über den Eingaben. In einer Zeile
+    // bliebe neben Feld, Einheit, Betrag und Schloss kein Platz für den Namen.
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:flex-nowrap">
+      <span className="flex w-full min-w-0 items-center gap-1.5 text-sm text-gray-700 sm:w-auto sm:flex-1">
         <span className="truncate">{entry.name}</span>
         {isPayer && (
           <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
@@ -297,7 +316,7 @@ function SplitRow({
         </span>
       </div>
 
-      <span className="w-24 shrink-0 text-right text-xs text-gray-500">
+      <span className="flex-1 text-right text-xs text-gray-500 sm:w-24 sm:flex-none">
         {formatMoney(preview, currency)}
       </span>
 

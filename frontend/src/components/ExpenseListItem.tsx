@@ -1,5 +1,6 @@
 import { Calendar, Pencil, Tag, Trash2, User } from "lucide-react";
 import type { Expense } from "../api";
+import { categoryLabel } from "../categories";
 import { formatDate, formatEuro, formatMoney } from "../format";
 
 interface ExpenseListItemProps {
@@ -21,7 +22,7 @@ function ExpenseListItem({ expense, onEdit, onDelete }: ExpenseListItemProps) {
     : 0;
 
   return (
-    <li className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition hover:border-emerald-200">
+    <li className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white p-3 shadow-sm transition hover:border-emerald-200 sm:gap-3 sm:p-4">
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold text-gray-900">{expense.title}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
@@ -37,7 +38,7 @@ function ExpenseListItem({ expense, onEdit, onDelete }: ExpenseListItemProps) {
           </span>
           <span className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs">
             <Tag className="h-3 w-3" />
-            {expense.category}
+            {categoryLabel(expense.category)}
           </span>
         </div>
       </div>
@@ -56,12 +57,21 @@ function ExpenseListItem({ expense, onEdit, onDelete }: ExpenseListItemProps) {
         {/* Eigenanteil des Zahlers (split_ratio als Prozent); bei expliziter
             Aufteilung zusätzlich die Anzahl beteiligter Personen. */}
         <p className="text-xs text-gray-400">
-          trägt {Math.round(expense.split_ratio * 100)}%
-          {shareCount > 1 && ` · auf ${shareCount} aufgeteilt`}
+          trägt {Math.round(expense.split_ratio * 100)} %
+          {/* Schmale Screens: eigene Zeile, sonst drückt der lange Text die
+              Meta-Zeile links zusammen und überlappt das Datum. */}
+          {shareCount > 1 && (
+            <>
+              <span className="hidden sm:inline"> · </span>
+              <span className="block sm:inline">
+                auf {shareCount} aufgeteilt
+              </span>
+            </>
+          )}
         </p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 flex-col items-center gap-1 sm:flex-row">
         <button
           type="button"
           onClick={onEdit}

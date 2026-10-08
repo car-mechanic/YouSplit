@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Check, Link2 } from "lucide-react";
+import { ArrowLeft, Check, Link2, Users } from "lucide-react";
 import { formatEuro } from "../format";
 
 interface ListHeaderProps {
   title: string;
   expenseCount: number;
   total: number;
+  /** Feste Personen der Liste; der Knopf daneben öffnet ihre Bearbeitung. */
+  members: string[];
+  onEditMembers: () => void;
 }
 
 /**
@@ -14,14 +17,24 @@ interface ListHeaderProps {
  * den Teilen-Link (die aktuelle URL) in die Zwischenablage kopiert. Die kurze
  * "Kopiert!"-Rückmeldung ist reine Anzeige und lebt deshalb lokal hier.
  */
-function ListHeader({ title, expenseCount, total }: ListHeaderProps) {
+function ListHeader({
+  title,
+  expenseCount,
+  total,
+  members,
+  onEditMembers,
+}: ListHeaderProps) {
   const [copied, setCopied] = useState(false);
 
   function handleCopyLink() {
-    void navigator.clipboard.writeText(window.location.href).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    // clipboard fehlt ohne HTTPS (z. B. Handy im WLAN über http://192.168…)
+    navigator.clipboard
+      ?.writeText(window.location.href)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => undefined);
   }
 
   return (
@@ -36,8 +49,20 @@ function ListHeader({ title, expenseCount, total }: ListHeaderProps) {
             Übersicht
           </Link>
           <h1 className="truncate text-2xl font-bold">{title}</h1>
-          <p className="mt-1 text-sm text-emerald-100">
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-emerald-100">
             {expenseCount} {expenseCount === 1 ? "Ausgabe" : "Ausgaben"}
+            <span aria-hidden>·</span>
+            <button
+              type="button"
+              onClick={onEditMembers}
+              title={members.join(", ")}
+              className="flex items-center gap-1 whitespace-nowrap underline decoration-emerald-300/60 underline-offset-2 transition hover:text-white"
+            >
+              <Users className="h-3.5 w-3.5" />
+              {members.length === 0
+                ? "Personen festlegen"
+                : `${members.length} ${members.length === 1 ? "Person" : "Personen"}`}
+            </button>
           </p>
         </div>
         <button

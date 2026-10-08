@@ -44,6 +44,7 @@ function Home() {
       const list = await createList(title.trim());
       // Neue Liste sofort in die Merkliste aufnehmen und öffnen.
       addRecentList(list.id, list.title);
+      // Dort startet beim ersten Öffnen das Tutorial (Personen festlegen usw.)
       navigate(`/list/${list.id}`);
     } catch {
       setError("Liste konnte nicht erstellt werden. Läuft das Backend?");
@@ -67,7 +68,7 @@ function Home() {
           YouSplit
         </h1>
         <p className="mt-2 max-w-md text-gray-500">
-          Gemeinsame Ausgaben tracken – ganz ohne Account. Liste erstellen, Link
+          Gemeinsame Ausgaben festhalten – ganz ohne Konto. Liste erstellen, Link
           teilen, fertig.
         </p>
       </div>
@@ -117,7 +118,7 @@ function Home() {
                 <button
                   type="button"
                   onClick={() => handleRemove(item.id)}
-                  aria-label={`"${item.title}" aus der Liste entfernen`}
+                  aria-label={`„${item.title}“ aus der Liste entfernen`}
                   className="absolute top-2 right-2 rounded-lg p-1.5 text-gray-300 transition hover:bg-gray-100 hover:text-gray-500"
                 >
                   <X className="h-4 w-4" />
@@ -143,7 +144,7 @@ function Home() {
               type="text"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder='z.B. "Urlaub Italien"'
+              placeholder="z. B. Urlaub Italien"
               maxLength={200}
               autoFocus
               className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"

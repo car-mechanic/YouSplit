@@ -11,6 +11,10 @@
 #                   "LANDFLEISCHEREI MUELLER". Nützlich für zusammengesetzte
 #                   deutsche Wörter. Vorsicht: zu kurze Begriffe treffen schnell
 #                   Falsches!
+#   YAZICI EINZELHANDELS = Rewe
+#                   "= Name" dahinter = Titel der Ausgabe. Für Märkte, die im
+#                   Auszug unter dem Betreiber stehen (Rewe-Franchise).
+#                   Ohne "= Name" ist der Titel das gefundene Wort.
 #   # ...           Kommentar (Zeile wird ignoriert)
 #
 # Tipp: Nimm den Namen so, wie er im Kontoauszug steht (Buchungstext ansehen),
@@ -21,7 +25,8 @@
 
 
 # ---- Eigene Ergänzungen (Kevin) ---------------------------------------------
-SCHOLAND            # Rewe-Markt (Scholand Einzelhandel)
+SCHOLAND = Rewe                 # Rewe-Markt (Scholand Einzelhandel)
+YAZICI EINZELHANDELS = Rewe     # Rewe-Markt (Yazici Einzelhandels oHG)
 
 
 # ---- Deutschland: Supermärkte & Discounter ----------------------------------

@@ -5,7 +5,9 @@ import {
   deleteExpense,
   getList,
   getSettlement,
+  setMembers,
   updateExpense,
+  withReason,
 } from "../api";
 import type { Expense, ExpenseUpdate, SharedList, Settlement } from "../api";
 import ConfirmDialog from "../components/ConfirmDialog";
@@ -15,12 +17,17 @@ import ExpenseList from "../components/ExpenseList";
 import ReceiptJobsPanel from "../components/ReceiptJobsPanel";
 import BankStatementView from "../components/BankStatementView";
 import ListHeader from "../components/ListHeader";
+import ListTutorial from "../components/ListTutorial";
+import MembersDialog from "../components/MembersDialog";
 import ListTabs from "../components/ListTabs";
 import type { ListTab } from "../components/ListTabs";
 import SettlementCard from "../components/SettlementCard";
 import StatisticsBoard from "../components/StatisticsBoard";
-import { formatEuro } from "../format";
+import { formatMoney } from "../format";
+import { categoryOptions } from "../categories";
+import { collectParticipants } from "../participants";
 import { addRecentList } from "../recentLists";
+import { markTutorialDone, shouldShowTutorial } from "../tutorialStorage";
 import { useReceiptJobs } from "../useReceiptJobs";
 
 /**
@@ -33,6 +40,16 @@ import { useReceiptJobs } from "../useReceiptJobs";
  */
 function ListView() {
   const { id } = useParams<{ id: string }>();
+
+  // Tutorial beim ersten Öffnen der Liste auf diesem Gerät – nach dem Anlegen
+  // wie über einen geteilten Link (siehe tutorialStorage.ts).
+  const [showTutorial, setShowTutorial] = useState(
+    () => !!id && shouldShowTutorial(id),
+  );
+  const [editingMembers, setEditingMembers] = useState(false);
+  // Neu einhängen des Formulars nach dem Tutorial: es liest den dort gewählten
+  // Zahler ("Wer bist du?") nur beim Einhängen aus dem localStorage.
+  const [formKey, setFormKey] = useState(0);
 
   const [list, setList] = useState<SharedList | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -57,18 +74,11 @@ function ListView() {
   // Empty-State-CTA (in ExpenseList) fokussiert das Titelfeld im ExpenseForm
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // Bekannte Teilnehmer der Liste (für den Advanced Splitter im Bearbeiten-Modal):
-  // eindeutige Zahler plus alle in bestehenden Aufteilungen genannten Namen.
-  const participants = useMemo(() => {
-    const names: string[] = [];
-    for (const expense of list?.expenses ?? []) {
-      if (!names.includes(expense.payer_name)) names.push(expense.payer_name);
-      for (const name of Object.keys(expense.splits ?? {})) {
-        if (!names.includes(name)) names.push(name);
-      }
-    }
-    return names;
-  }, [list]);
+  // Bekannte Teilnehmer der Liste (für den Advanced Splitter im Bearbeiten-Modal)
+  const participants = useMemo(
+    () => collectParticipants(list?.expenses ?? [], list?.members ?? []),
+    [list],
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -78,9 +88,7 @@ function ListView() {
         // Besuch für die Startseite merken (UUID + Titel + jetzt), rein lokal.
         addRecentList(loaded.id, loaded.title);
       })
-      .catch(() =>
-        setLoadError("Liste nicht gefunden. Ist der Link korrekt?"),
-      );
+      .catch(() => setLoadError("Liste nicht gefunden. Ist der Link korrekt?"));
   }, [id]);
 
   // Bon-Scans im Hintergrund verfolgen (Bugfix 2026-09-25): Ist ein Scan
@@ -142,8 +150,10 @@ function ListView() {
           : prev,
       );
       setEditing(null);
-    } catch {
-      setEditError("Änderung konnte nicht gespeichert werden.");
+    } catch (error) {
+      setEditError(
+        withReason("Änderung konnte nicht gespeichert werden", error),
+      );
     } finally {
       setEditSaving(false);
     }
@@ -164,12 +174,24 @@ function ListView() {
           : prev,
       );
       setDeleting(null);
-    } catch {
+    } catch (error) {
       setDeleting(null);
-      setActionError("Ausgabe konnte nicht gelöscht werden.");
+      setActionError(withReason("Ausgabe konnte nicht gelöscht werden", error));
     } finally {
       setDeleteBusy(false);
     }
+  }
+
+  async function saveMembers(members: string[]) {
+    if (!id) return;
+    const updated = await setMembers(id, members);
+    setList((prev) => (prev ? { ...prev, members: updated.members } : prev));
+  }
+
+  function closeTutorial() {
+    if (id) markTutorialDone(id);
+    setShowTutorial(false);
+    setFormKey((key) => key + 1);
   }
 
   // Empty-State-CTA: ins Titelfeld des Formulars scrollen und fokussieren
@@ -217,6 +239,8 @@ function ListView() {
         title={list.title}
         expenseCount={list.expenses.length}
         total={total}
+        members={list.members}
+        onEditMembers={() => setEditingMembers(true)}
       />
 
       <ListTabs active={activeTab} onChange={setActiveTab} />
@@ -225,8 +249,10 @@ function ListView() {
       {activeTab === "expenses" && (
         <>
           <ExpenseForm
+            key={formKey}
             listId={list.id}
             expenses={list.expenses}
+            members={list.members}
             onExpenseAdded={handleExpenseAdded}
             onReceiptQueued={receiptJobs.refresh}
             titleInputRef={titleInputRef}
@@ -274,6 +300,7 @@ function ListView() {
         <BankStatementView
           listId={list.id}
           expenses={list.expenses}
+          members={list.members}
           onImported={() => {
             // Neue Ausgaben laden → Liste + Kassensturz aktualisieren sich
             getList(list.id)
@@ -286,10 +313,28 @@ function ListView() {
       )}
 
       {/* ---------- Modale Dialoge ---------- */}
+      {showTutorial && (
+        <ListTutorial
+          listId={list.id}
+          initialMembers={list.members}
+          onSaveMembers={saveMembers}
+          onClose={closeTutorial}
+        />
+      )}
+
+      {editingMembers && (
+        <MembersDialog
+          initial={list.members}
+          onSave={saveMembers}
+          onClose={() => setEditingMembers(false)}
+        />
+      )}
+
       {editing && (
         <EditExpenseModal
           expense={editing}
           participants={participants}
+          categories={categoryOptions(list.expenses)}
           saving={editSaving}
           errorMessage={editError}
           onSave={handleEditSave}
@@ -300,7 +345,7 @@ function ListView() {
       {deleting && (
         <ConfirmDialog
           title="Ausgabe löschen?"
-          message={`"${deleting.title}" über ${formatEuro(deleting.amount)} wird dauerhaft entfernt.`}
+          message={`„${deleting.title}“ über ${formatMoney(deleting.amount, deleting.currency)} wird dauerhaft entfernt.`}
           confirmLabel="Löschen"
           tone="danger"
           loading={deleteBusy}

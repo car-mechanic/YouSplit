@@ -16,6 +16,32 @@ export const formatMoney = (value: number, currency: string): string =>
   }).format(value);
 
 /**
+ * Liest einen getippten Betrag: "24,50", "24.50", "1.234,56", "12 €".
+ * Kommen Punkt UND Komma vor, ist das letzte der beiden das Dezimalzeichen, das
+ * andere gliedert Tausender. Liefert NaN, wenn die Eingabe kein Betrag ist.
+ *
+ * Ersetzt `Number.parseFloat(text.replace(",", "."))`: das las "1.234,56" still
+ * als 1,234 und "12abc" als 12.
+ */
+export function parseAmount(input: string): number {
+  let text = input.replace(/[\s€]/g, "");
+  if (!/^[\d.,]+$/.test(text)) return Number.NaN;
+
+  const lastComma = text.lastIndexOf(",");
+  const lastDot = text.lastIndexOf(".");
+  if (lastComma >= 0 && lastDot >= 0) {
+    const thousands = lastComma > lastDot ? "." : ",";
+    text = text.split(thousands).join("");
+  } else if (text.split(".").length > 2) {
+    // Mehrere Punkte ohne Komma sind Tausenderpunkte ("1.234.567")
+    text = text.split(".").join("");
+  }
+
+  // Number() statt parseFloat: lehnt Reste wie ein zweites Komma ab (→ NaN)
+  return /\d/.test(text) ? Number(text.replace(",", ".")) : Number.NaN;
+}
+
+/**
  * Formatiert ein ISO-Datum (nur der Datumsanteil "YYYY-MM-DD" wird genutzt,
  * auch aus einem vollen Zeitstempel) als deutsches Datum "TT.MM.JJJJ".
  * Die Komponenten werden LOKAL interpretiert (`new Date(y, m-1, d)`), damit

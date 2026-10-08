@@ -17,6 +17,7 @@ Aufteilungs-Konvention:
   Person, traegt er alles selbst.
 """
 
+from collections.abc import Sequence
 from typing import Protocol
 
 from schemas import PersonBalance, SettlementResponse, SettlementTransaction
@@ -38,15 +39,20 @@ class ExpenseLike(Protocol):
     splits: dict[str, float] | None
 
 
-def collect_persons(expenses: list[ExpenseLike]) -> list[str]:
+def collect_persons(
+    expenses: list[ExpenseLike], members: Sequence[str] = ()
+) -> list[str]:
     """Alle beteiligten Personen in Reihenfolge ihres ersten Auftretens.
+
+    Zuerst die festen Personen der Liste (``SharedList.members``), damit auch
+    jemand ohne eigene Ausgabe von Anfang an mitzaehlt.
 
     Beruecksichtigt Zahler UND — dank Advanced Split — Personen, die zwar an
     einer Ausgabe beteiligt sind (in ``splits``), aber selbst nie gezahlt haben.
     So taucht ein reiner Mit-Esser im Kassensturz auf, sofern ihm eine Ausgabe
     einen Anteil zuweist.
     """
-    persons: list[str] = []
+    persons: list[str] = list(dict.fromkeys(members))
     for expense in expenses:
         if expense.payer_name not in persons:
             persons.append(expense.payer_name)
@@ -57,9 +63,11 @@ def collect_persons(expenses: list[ExpenseLike]) -> list[str]:
     return persons
 
 
-def _net_balances(expenses: list[ExpenseLike]) -> dict[str, tuple[float, float]]:
+def _net_balances(
+    expenses: list[ExpenseLike], members: Sequence[str]
+) -> dict[str, tuple[float, float]]:
     """Berechnet je Person ``(gezahlt, verbraucht)`` — in EUR."""
-    persons = collect_persons(expenses)
+    persons = collect_persons(expenses, members)
 
     paid: dict[str, float] = {name: 0.0 for name in persons}
     share: dict[str, float] = {name: 0.0 for name in persons}
@@ -142,9 +150,11 @@ def _simplify_debts(net: dict[str, float]) -> list[SettlementTransaction]:
     return transactions
 
 
-def calculate_settlement(expenses: list[ExpenseLike]) -> SettlementResponse:
+def calculate_settlement(
+    expenses: list[ExpenseLike], members: Sequence[str] = ()
+) -> SettlementResponse:
     """Kompletter Kassensturz: Salden je Person + minimale Ausgleichszahlungen."""
-    balances_raw = _net_balances(expenses)
+    balances_raw = _net_balances(expenses, members)
 
     net = {name: paid - share for name, (paid, share) in balances_raw.items()}
 

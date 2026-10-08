@@ -19,6 +19,14 @@ class SharedList(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Personen der Liste (Namen, Reihenfolge wie eingegeben; 2026-10-08). Werden
+    # im Tutorial einer neuen Liste festgelegt, damit schon die erste Ausgabe
+    # auf alle aufgeteilt wird, statt erst 100 %, dann 50/50, dann Drittel.
+    # NULL bei Altlisten = nur die Personen aus den Ausgaben.
+    # Nachtraeglich ergaenzte Spalte → ``database.ensure_schema_updates``.
+    members: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
 
     expenses: Mapped[list["Expense"]] = relationship(
         back_populates="shared_list", cascade="all, delete-orphan"

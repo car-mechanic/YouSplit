@@ -150,7 +150,27 @@ def _get_expense_or_404(
     return expense
 
 
+# ---------- Uploads ----------
+
+def _ensure_max_size(data: bytes, max_bytes: int, label: str) -> None:
+    """Lehnt zu grosse Uploads mit 413 ab.
+
+    Der Aufrufer liest dafuer hoechstens ``max_bytes + 1`` Bytes: so landet auch
+    ein viel zu grosser Upload nie komplett im RAM.
+    """
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"{label} ist zu groß (max. {max_bytes // (1024 * 1024)} MB).",
+        )
+
+
 # ---------- Kassenbon-Scan (OCR) ----------
+
+# Handy-Fotos liegen bei 2-12 MB. Das Bild wartet bis zum Ende der Analyse im
+# RAM des BackgroundTasks, deshalb begrenzt.
+MAX_RECEIPT_BYTES = 20 * 1024 * 1024
+
 
 def _ensure_image(receipt: UploadFile) -> None:
     """Stellt sicher, dass der Upload ueberhaupt ein Bild ist (sonst 400).
@@ -163,7 +183,7 @@ def _ensure_image(receipt: UploadFile) -> None:
     ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bitte ein Bild hochladen (JPEG, PNG, ...).",
+            detail="Bitte ein Bild hochladen (JPEG, PNG …).",
         )
 
 
@@ -273,7 +293,9 @@ def _insert_scanned_expense(
             .filter(models.Expense.list_id == list_id)
             .all()
         )
-        persons = collect_persons(existing)
+        shared_list = db.get(models.SharedList, list_id)
+        members = (shared_list.members if shared_list else None) or []
+        persons = collect_persons(existing, members)
         if payer_name not in persons:
             persons.append(payer_name)
 
@@ -357,7 +379,7 @@ def get_settlement(
 ) -> schemas.SettlementResponse:
     """Kassensturz fuer N Personen: wer schuldet wem wie viel (minimal)."""
     shared_list = _get_list_or_404(db, list_id)
-    return calculate_settlement(shared_list.expenses)
+    return calculate_settlement(shared_list.expenses, shared_list.members or [])
 
 
 # ---------- Ausgaben ----------
@@ -483,7 +505,8 @@ async def upload_receipt(
 
     # Bild im RAM festhalten: die UploadFile ist nach der Antwort nicht mehr
     # lesbar, der BackgroundTask laeuft aber erst danach.
-    image_bytes = await receipt.read()
+    image_bytes = await receipt.read(MAX_RECEIPT_BYTES + 1)
+    _ensure_max_size(image_bytes, MAX_RECEIPT_BYTES, "Das Bild")
 
     job = models.ReceiptJob(
         list_id=list_id,
@@ -561,7 +584,7 @@ async def confirm_duplicate_receipt(
     if job.status != receipt_jobs.STATUS_DUPLICATE or not job.result:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Dieser Scan wartet auf keine Bestaetigung.",
+            detail="Dieser Scan wartet auf keine Bestätigung.",
         )
 
     analysis = schemas.ReceiptAnalysis.model_validate(job.result)
@@ -620,11 +643,7 @@ def parse_bank_statement(
     _get_list_or_404(db, list_id)
 
     data = statement.file.read(MAX_STATEMENT_BYTES + 1)
-    if len(data) > MAX_STATEMENT_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="Das PDF ist zu groß (max. 15 MB).",
-        )
+    _ensure_max_size(data, MAX_STATEMENT_BYTES, "Das PDF")
     # Magic Number statt nur Content-Type: Browser/Mobilgeraete setzen den Typ
     # nicht immer zuverlaessig.
     if not data.startswith(b"%PDF"):
@@ -637,7 +656,7 @@ def parse_bank_statement(
         result = bank_statement.parse_statement(data)
     except bank_statement.StatementParseError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
     rules = [
@@ -702,10 +721,11 @@ def import_bank_statement(
     verteilt (``splits.fair_split``, wie beim Bon-Scan). Betraege sind EUR (Kurs
     1.0). Alles oder nichts: ein einziger Commit am Ende.
     """
-    _get_list_or_404(db, list_id)
+    shared_list = _get_list_or_404(db, list_id)
 
     persons = collect_persons(
-        db.query(models.Expense).filter(models.Expense.list_id == list_id).all()
+        db.query(models.Expense).filter(models.Expense.list_id == list_id).all(),
+        shared_list.members or [],
     )
     if payload.payer_name not in persons:
         persons.append(payload.payer_name)

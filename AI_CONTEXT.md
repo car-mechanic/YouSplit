@@ -59,12 +59,18 @@ YouSplit/
 │  ├─ currency.py              # Wechselkurs-Abruf (Frankfurter-API) — Multi-Currency
 │  ├─ settlement.py            # Kassensturz für N Personen (reine Logik, testbar, in EUR); collect_persons
 │  ├─ splits.py                # fair_split(): gleichmäßige Aufteilung + 1-Cent-Rest (rein, testbar, Epic 4.0)
+│  ├─ categories.py            # Standard-Kategorien (eine Wahrheit für Bon-KI + Frontend-Spiegel), 2026-10-08
 │  ├─ bank_statement.py        # Kontoauszug-Parser: PDF → Buchungen + Lebensmittel-Erkennung (rein, testbar, Epic 4.0 #3, 2026-10-02)
 │  ├─ food_merchants.txt       # Händlerliste für die Lebensmittel-Erkennung — VON HAND ERWEITERBAR (~330 Einträge weltweit, 2026-10-02)
 │  ├─ tests/test_bank_statement.py # unittest für den Parser (`python -m unittest discover -s tests`)
 │  ├─ tests/test_duplicates.py # unittest Duplikats-Erkennung + Scan-Flow (SQLite, braucht fastapi+sqlalchemy)
+│  ├─ tests/test_schemas.py    # unittest Eingabe-Validierung: KI-Betragstexte, NaN/Infinity, Feldlängen (2026-10-07)
+│  ├─ tests/test_uploads.py    # unittest Upload-Grenzen über HTTP (TestClient + SQLite): 413/400/422 (2026-10-07)
+│  ├─ tests/test_members.py    # unittest Personen der Liste: API, Kassensturz, Scan + Import teilen auf alle (2026-10-08)
+│  ├─ tests/test_ollama_client.py # unittest Chat-Optionen, Bildvorbereitung (EXIF-Drehung), Nachbearbeitung der KI-Antwort
 │  └─ routers/
-│     └─ lists.py              # Alle Endpunkte; Bon-Upload jetzt asynchron (BackgroundTasks, Epic 4.0)
+│     ├─ lists.py              # Listen, Ausgaben, Bon-Scan, Kontoauszug (Bon-Upload asynchron, Epic 4.0)
+│     └─ members.py            # PUT …/members: Personen der Liste (2026-10-08, eigenes Modul statt Anbau)
 └─ frontend/
    ├─ Dockerfile
    ├─ vite.config.ts, tsconfig*.json, eslint.config.js
@@ -72,9 +78,15 @@ YouSplit/
       ├─ main.tsx              # Einstiegspunkt (Router-Mount)
       ├─ App.tsx               # Routen: "/" → Home, "/list/:id" → ListView
       ├─ api.ts                # API-Client-Funktionen + TS-Typen + DuplicateError + Währungslisten (spiegeln die Schemas)
-      ├─ format.ts             # formatEuro() + formatMoney() + formatDate() (Intl, de-DE)
+      ├─ format.ts             # formatEuro() + formatMoney() + formatDate() (Intl, de-DE) + parseAmount() (getippte Beträge lesen)
+      ├─ participants.ts       # collectParticipants(): Personen der Liste + Zahler + Mit-Esser, Spiegel von settlement.collect_persons
+      ├─ categories.ts         # Standard-Kategorien, eigene der Liste, suggestCategory() (Vorschlag aus Titel), 2026-10-08
+      ├─ statsRange.ts         # Zeitraum der Statistik: Monate mit Ausgaben, eigener Von/Bis-Zeitraum (rein, 2026-10-08)
+      ├─ expenseSort.ts        # sortExpenses(): nach angezeigtem Datum bzw. EUR-Wert (rein, 2026-10-07)
+      ├─ *.test.ts             # vitest-Tests der reinen Module (`npm test`); testExpense.ts = Test-Helfer
       ├─ splitMath.ts          # REINE Split-Berechnung (Locking, 1-Cent-Verteilung) — testbar (Roadmap 3.0 #3)
       ├─ recentLists.ts        # Zuletzt besuchte Listen im localStorage (Startseite, Roadmap 3.0 #1)
+      ├─ tutorialStorage.ts    # Tutorial je Liste + Gerät nur einmal (localStorage), 2026-10-08
       ├─ payerStorage.ts       # localStorage-Schlüssel des gemerkten Zahlers je Liste (ExpenseForm + BankStatementView)
       ├─ useReceiptJobs.ts     # Hook: pollt Bon-Scan-Status, lädt Liste bei "done" neu (2026-09-25)
       ├─ receiptProgress.ts    # Fortschritts-Schätzung zwischen den Backend-Meilensteinen (rein, 2026-10-02)
@@ -82,7 +94,12 @@ YouSplit/
       │  ├─ Home.tsx           # Startseite/Dashboard: CTA "Neue Liste" (Modal) + Grid zuletzt besuchter Listen (Roadmap 3.0 #1)
       │  └─ ListView.tsx       # Orchestrator: lädt Liste + Kassensturz, koordiniert Edit/Delete, merkt Besuch
       └─ components/
-         ├─ ListHeader.tsx     # Kopf-Card (Titel, Summe, Teilen-Link)
+         ├─ ListHeader.tsx     # Kopf-Card (Titel, Summe, Personen-Knopf, Teilen-Link)
+         ├─ ListTutorial.tsx   # Tutorial nach dem Anlegen: Personen, „Wer bist du?“, 3 Hinweise (2026-10-08)
+         ├─ MembersEditor.tsx  # Namen eingeben als Chips (Tutorial + MembersDialog)
+         ├─ MembersDialog.tsx  # Personen einer bestehenden Liste ändern
+         ├─ CategorySelect.tsx # Kategorie-Dropdown mit „Eigene Kategorie hinzufügen …“
+         ├─ StatsRangePicker.tsx # Zeitraum-Auswahl der Statistik (Monate / eigener Zeitraum)
          ├─ ListTabs.tsx       # Tab-Leiste: Ausgaben / Kassensturz / Statistiken / Kontoauszug (Epic 4.0 #3)
          ├─ StatisticsBoard.tsx # Charts (recharts): Kategorie-Donut + Ausgaben je Person (Roadmap 2.0 #2, in EUR)
          ├─ BankStatementView.tsx # Kontoauszug-Import (Epic 4.0 #3): Upload → Vorschau (Häkchen) → Import als Einzelausgaben
@@ -135,7 +152,8 @@ Ollama (:11434, qwen2.5vl:3b)
 
 - **`SharedList`** — geteilte Liste. **`id` ist eine UUID** und dient als
   Share-Link (jeder mit der UUID sieht die Liste; kein Login). Felder: `title`,
-  `created_at`. `expenses` = 1:n mit `cascade="all, delete-orphan"`.
+  `created_at`, **`members`** (JSON-Liste der Personennamen, nullable, seit
+  2026-10-08, siehe 2.15). `expenses` = 1:n mit `cascade="all, delete-orphan"`.
 - **`Expense`** — eine Ausgabe. Felder: `title`, `amount` (float), `payer_name`,
   `split_ratio` (float, Default `0.5`), `category`, `created_at` (Zeitstempel,
   `server_default=now()` — dient Sortierung & Duplikats-Prüfung), `receipt_date`
@@ -178,7 +196,8 @@ Ollama (:11434, qwen2.5vl:3b)
 | `POST /api/lists/{list_id}/expenses`               | Ausgabe manuell hinzufügen (`ExpenseCreate`)                |
 | `PUT  /api/lists/{list_id}/expenses/{expense_id}`  | Ausgabe vollständig aktualisieren (`ExpenseUpdate`)         |
 | `DELETE /api/lists/{list_id}/expenses/{expense_id}`| Ausgabe löschen → `204`                                     |
-| `POST /api/lists/{list_id}/receipts`               | **Bon-Upload — asynchron** (multipart: `payer_name` + `receipt`-Bild) → **`202` `{"status":"processing","job_id":…}`** (Epic 4.0 #2, Job seit 2026-09-25) |
+| `PUT  /api/lists/{list_id}/members`                | Personen der Liste ersetzen (`{"members": [...]}`, getrimmt, ohne Doppelte, max. 50) → `SharedListResponse` (`routers/members.py`, 2026-10-08) |
+| `POST /api/lists/{list_id}/receipts`               | **Bon-Upload — asynchron** (multipart: `payer_name` + `receipt`-Bild, max. 20 MB → sonst `413`) → **`202` `{"status":"processing","job_id":…}`** (Epic 4.0 #2, Job seit 2026-09-25) |
 | `GET  /api/lists/{list_id}/receipt-jobs`           | Nicht quittierte Bon-Scans (neueste zuerst) → `list[ReceiptJobResponse]` — Frontend pollt |
 | `POST /api/lists/{list_id}/receipt-jobs/{job_id}/confirm` | **„Trotzdem hinzufügen“** für einen Scan mit Status `duplicate` → legt die Ausgabe aus den gespeicherten Bon-Daten an (`201 ExpenseResponse`), quittiert den Job; `404` unbekannt, `409` wenn kein wartendes Duplikat |
 | `DELETE /api/lists/{list_id}/receipt-jobs/{job_id}`| Job quittieren/verwerfen → `204` (idempotent)               |
@@ -219,24 +238,30 @@ KI-Analyse). Die manuelle Eingabe bleibt bei „Betrag + Datum“ (ohne Geschäf
 1. Frontend sendet Bild + `payer_name` als `multipart/form-data` an
    `POST /api/lists/{id}/receipts` (Content-Type setzt der Browser selbst).
 2. Router prüft `content_type` (muss `image/*` sein → sonst 400), liest die Bytes
+   (höchstens `MAX_RECEIPT_BYTES` = 20 MB → sonst 413, gemeinsamer Helfer
+   `_ensure_max_size` mit dem Kontoauszug-Upload)
    und übergibt sie an den BackgroundTask. Ab hier läuft alles **nach** der
    202-Antwort: `analyze_receipt(image_bytes)`.
-3. `ollama_client._prepare_image` verkleinert das Bild auf max.
-   `MAX_IMAGE_PIXELS` (1,8 MP) und normalisiert auf JPEG (q90) — spart Tokens
-   und Rechenzeit.
+3. `ollama_client._prepare_image` dreht das Bild nach seinem EXIF-Tag aufrecht
+   (`ImageOps.exif_transpose`, seit 2026-10-07: Handy-Hochkantfotos liegen in
+   der Datei oft quer, und das erzeugte JPEG trägt kein EXIF mehr), verkleinert
+   es auf max. `MAX_IMAGE_PIXELS` (1,8 MP) und normalisiert auf JPEG (q90) —
+   spart Tokens und Rechenzeit.
 4. Bild → Base64 → an Ollama (`RECEIPT_PROMPT`, `format: json`, `num_ctx: 16384`,
    `temperature: 0`). Der Prompt fordert **zwingend** fünf Keys: `title`, `amount`,
    `date` (Kaufdatum, ISO `YYYY-MM-DD` oder `null`), `category`, `currency`
    (ISO-Code, Fallback `EUR`).
 5. Antwort wird gegen `schemas.ReceiptAnalysis` validiert. `field_validator`
-   repariert deutsche Betragsformate ("24,50 €" → `24.50`) und parst das Datum
+   repariert Betragstexte (`_normalize_amount_text`: "24,50 €" → `24.50`,
+   "1.234,56" → `1234.56`, "CHF 12.50" → `12.50`; bei Punkt UND Komma ist das
+   letzte das Dezimalzeichen) und parst das Datum
    tolerant (ISO **und** deutsch `TT.MM.JJJJ`, angehängte Uhrzeit wird
    abgeschnitten). **Wichtig:** Das Datumsfeld heißt intern `receipt_date`, liest
    aber per **Alias** den JSON-Key `date` — der Bezeichner `date` als Feldname
    würde sonst den importierten `date`-Typ verschatten. Unlesbares/fehlendes
    Datum → `None` (der Scan schlägt deshalb **nicht** fehl).
 6. Halluzinierte Kategorien werden auf `FALLBACK_CATEGORY` ("Unknown/Manuell")
-   gemappt. Erlaubte Kategorien: **Lebensmittel, Kosmetik, Restaurant, Haushalt,
+   gemappt; ein leerer Titel wird zu `FALLBACK_TITLE` ("Kassenbon"). Erlaubte Kategorien: **Lebensmittel, Kosmetik, Restaurant, Haushalt,
    Sonstiges**.
 7. Für die gelesene `currency` wird der Tageskurs geholt (`currency.py`, EUR ohne
    API-Aufruf). Der BackgroundTask legt einen **fairen Split** über alle aktuell
@@ -382,10 +407,23 @@ zeigt **immer alle bekannten Teilnehmer** der Liste — auch solche, die 0 zahle
 - **Fairer Default:** eine neue Ausgabe startet im `%`-Modus mit gleichmäßiger
   Verteilung (z. B. 4 Personen → 25 % je).
 - **Locking:** Ändert der Nutzer einen Wert, wird die Person „gelockt"; die
-  übrigen (ungelockten) teilen sich den Rest **gleichmäßig** (zieht man bei X ab,
-  bekommen die Ungelockten automatisch mehr, und umgekehrt). Ein Lock-Schalter je
-  Zeile erlaubt Freigeben/Fixieren. Invariante: **ungelockt = automatisch
+  übrigen (ungelockten) teilen sich den Rest (zieht man bei X ab, bekommen die
+  Ungelockten automatisch mehr, und umgekehrt). Ein Lock-Schalter je Zeile
+  erlaubt Freigeben/Fixieren. Invariante: **ungelockt = automatisch
   balanciert**, **gelockt = manuell**.
+- **Verhältnis bleibt (2026-10-07):** Die Ungelockten teilen den Rest **in ihrem
+  bisherigen Verhältnis** (`redistributeUnlocked`, Standard `keep-ratio`). Waren
+  sie gleich (bis auf den Rundungs-Cent, `isEvenSplit`), bleibt es gleichmäßig;
+  eine eigene Aufteilung (gespeicherte 70/30) bleibt 70/30, wenn sich Betrag
+  oder Teilnehmer ändern. Neue Personen teilen sich in eine faire Aufteilung
+  gleichberechtigt hinein, in eine eigene starten sie mit 0 (`syncEntries`).
+  Nur das **Freigeben** eines fixierten Werts verteilt bewusst gleichmäßig neu
+  (`even`). Im Betrag-Modus rechnet `AdvancedSplitter` bei jedem neuen
+  Gesamtbetrag vom Stand der letzten Nutzer-Änderung aus (`basis`), nicht vom
+  angezeigten Zwischenstand: beim Tippen läuft der Betrag über Zwischenwerte
+  („100“ → „“ → „1“ → „110“), über die das Verhältnis sonst verloren ginge.
+  **Die Aufteilung gilt je Ausgabe** (`Expense.splits`); eine listenweite
+  Standard-Aufteilung gibt es nicht, neue Ausgaben starten fair.
 - **1-Cent-Problem:** `resolveAmounts` normiert nicht-negative Gewichte auf den
   Gesamtbetrag; der Rundungsrest geht an die **erste ungelockte Person**, sodass
   die Summe der Anteile **immer exakt** `amount` ergibt (robust auch bei
@@ -559,7 +597,9 @@ generischen Parsers): immer eine **Vorschau** vor dem Import.
     LatAm, Asien-Pazifik, Afrika). **Dort von Hand erweitern** — Format steht im
     Dateikopf: ein Eintrag je Zeile, `#` = Kommentar, `*NAME` = auch als Teil eines
     Worts (für deutsche Zusammensetzungen wie `*FLEISCHEREI` → „Landfleischerei"),
-    sonst nur ganzes Wort (`SPAR` trifft nicht `SPARKASSE`). Die Datei wird per
+    sonst nur ganzes Wort (`SPAR` trifft nicht `SPARKASSE`), `= Name` dahinter =
+    Titel der Ausgabe (seit 2026-10-08, für Franchise-Märkte, die im Auszug unter
+    dem Betreiber stehen: `YAZICI EINZELHANDELS = Rewe`, `SCHOLAND = Rewe`). Die Datei wird per
     mtime-Cache bei Änderung neu gelesen (**kein Neustart/Neubau nötig**).
     Normalisierung (`_fold`): Großschreibung, Umlaute (Ä→AE), Akzente weg,
     Sonderzeichen → Leerzeichen („E-Center" = „E CENTER", „PayPal *LIDL" matcht).
@@ -603,6 +643,134 @@ generischen Parsers): immer eine **Vorschau** vor dem Import.
 
 ---
 
+### 2.14 Code-Review (2026-10-07)
+
+Kompletter Review von Backend und Frontend. Behoben (jeweils mit Test):
+
+- **Betrag falsch gelesen (Frontend):** `parseFloat("1.234,56")` ergab 1,234,
+  "12abc" ergab 12. Neu: `format.parseAmount` in `ExpenseForm`,
+  `EditExpenseModal`, `AdvancedSplitter`.
+- **Betrag der KI abgelehnt (Backend):** "1.234,56", "CHF 12.50", "$7.99"
+  ließen den Scan scheitern. Neu: `schemas._normalize_amount_text`.
+- **Bon-Foto gedreht:** EXIF-Drehung wird vor der KI angewendet (2.4, Schritt 3).
+- **Upload ohne Größenlimit:** Bon-Bild max. 20 MB (413), gemeinsamer Helfer
+  `_ensure_max_size` mit dem Kontoauszug.
+- **Validierungslücken:** `Infinity` als Betrag, `NaN`/`Infinity` in `splits`
+  und eine Kategorie über 100 Zeichen (500er in Postgres) kamen durch.
+- **Leerer Bon-Titel** → `FALLBACK_TITLE`.
+- **Fremdwährung als Euro angezeigt:** Löschdialog und Duplikat-Warnung nutzen
+  `formatMoney(amount, currency)`.
+- **Sortierung:** nach dem angezeigten Datum (`receipt_date`, sonst Anlagetag)
+  statt nur `created_at`; Betragssortierung in EUR (`expenseSort.ts`).
+- **Personen uneinheitlich:** Formular und Kontoauszug kannten nur Zahler, der
+  Bearbeiten-Dialog und der Kassensturz auch Mit-Esser. Neu überall
+  `collectParticipants`.
+- **Fehlerursache verschluckt:** `ApiError` + `withReason` (z. B. „Wechselkurs
+  für USD nicht abrufbar“ statt nur „konnte nicht gespeichert werden“).
+- **Aufgeräumt:** toter Code `DuplicateAnalysis` in `api.ts` (das Backend sendet
+  seit dem asynchronen Scan kein `analysis` mehr), veraltete Starlette-Konstanten
+  (`HTTP_413_CONTENT_TOO_LARGE`, `HTTP_422_UNPROCESSABLE_CONTENT`),
+  `<html lang="de">`.
+- **Neu:** vitest als Dev-Abhängigkeit (`npm test`). Im Frontend-Container erst
+  nach `docker compose up --build` vorhanden; die App läuft auch ohne.
+- **Splitter verlor eine eigene Aufteilung (vom Nutzer entschieden: Verhältnis
+  halten):** Gespeicherte 70/30 wurden beim Ändern von Betrag oder Zahlername
+  still zu 50/50. Jetzt bleibt das Verhältnis (Details in 2.9).
+- **Handy-Layout (320–420 px):** Im Splitter steht der Name in eigener Zeile über
+  den Eingaben (vorher verschwand er neben dem „zahlt“-Badge); Tabs mit Icon
+  über dem Text (vorher ragte „Kontoauszug“ heraus); in der Ausgaben-Card steht
+  „auf N aufgeteilt“ in eigener Zeile und die Aktionen untereinander (vorher
+  überlappte der Text das Datum); die Sortierung rutscht unter die Überschrift
+  statt rechts überzustehen. Ab `sm` (640 px) unverändert. Reine Fehlerbehebung,
+  **nicht** das UI-Redesign aus 4.7 #1.
+
+**Verifikation (Container, 2026-10-07):** 62 Backend-Tests, 60 Frontend-Tests,
+Typecheck, Lint, Build grün; Playwright-Durchgänge gegen echte Vite-UI + Backend
+mit SQLite: 18 Prüfungen (Beträge, Sortierung, Mit-Esser, Löschdialog,
+Fehlerursachen, Upload-Limit, Scan-Fehlerkarte, Kontoauszug-Import) und 46
+Prüfungen zu Splitter-Verhältnis und Layout bei 320/360/390/420/640/1000 px.
+**Nicht** gegen echtes Postgres/Ollama, nicht im Docker-Stack und nicht auf
+einem echten Handy getestet.
+
+**Im Review gefunden, bewusst NICHT geändert** (erst mit dem Nutzer klären):
+
+1. **Umbenannter Zahler bleibt Teilnehmer:** Ändert man im Bearbeiten-Dialog den
+   Zahlernamen, bleibt der alte Name mit seinem Anteil in der Aufteilung.
+2. **Keine listenweite Standard-Aufteilung:** Jede neue Ausgabe startet fair;
+   ein Default wie „in dieser Liste immer 70/30“ existiert nicht.
+3. **`routers/lists.py` (760 Zeilen)** bündelt Listen, Ausgaben, Bon-Scan und
+   Kontoauszug. Laut 3.5 nach Ressourcen aufteilen.
+4. **Server-Umzug (To-Do 4.7 #2):** `API_BASE_URL` (`api.ts`) und CORS
+   (`main.py`) sind fest auf `localhost`; „Link teilen“ nutzt
+   `navigator.clipboard`, das es nur unter HTTPS/localhost gibt.
+5. **„Trotzdem hinzufügen“** (`confirm_duplicate_receipt`) legt die Ausgabe und
+   löscht den Job in zwei Transaktionen: zwei gleichzeitige Aufrufe legen den
+   Bon doppelt an (das UI sperrt den Button, die API nicht).
+
+### 2.15 Kategorien, Statistik-Zeitraum, Personen + Tutorial (2026-10-08)
+
+Drei Wünsche des Nutzers, umgesetzt mit Tests:
+
+- **Kategorien beim manuellen Eintragen:** Dropdown `CategorySelect` in
+  `ExpenseForm` und `EditExpenseModal`. Standards (`categories.ts` =
+  `backend/categories.py`): Lebensmittel, Auswärtsessen, Haushalt, Drogerie,
+  Freizeit, Mobilität, Sonstiges. Ganz unten „Eigene Kategorie hinzufügen …“.
+  **Speicherung:** eine eigene Kategorie steht nur an der Ausgabe
+  (`Expense.category`); `categoryOptions` sammelt alle Kategorien der Liste, so
+  steht sie danach allen Personen zur Wahl. Keine eigene Tabelle (bewusst: eine
+  Kategorie ohne Ausgabe gibt es nicht).
+- **„Intelligenz“:** `suggestCategory(title, expenses)` belegt die Kategorie beim
+  Tippen des Titels vor (Badge „Vorschlag“), bis der Nutzer selbst wählt. Erst
+  gelernt (gleicher Titel in der Liste → deren jüngste Kategorie, auch eigene),
+  dann Stichwörter (REWE, Pizzeria, Tanken …; das längste Stichwort gewinnt,
+  kurze nur als ganzes Wort). Ohne Treffer: „Sonstiges“. Manuelle Ausgaben
+  landen damit nicht mehr bei „Unknown/Manuell“; der Altwert heißt in der
+  Anzeige „Ohne Kategorie“ (`categoryLabel`).
+- **Bon-KI auf dieselben Kategorien umgestellt:** Prompt nennt die Standards,
+  Unbekanntes → „Sonstiges“ (vorher „Unknown/Manuell“), alte Antworten
+  „Restaurant“/„Kosmetik“ werden zu „Auswärtsessen“/„Drogerie“. **Bestehende
+  Ausgaben wurden nicht migriert:** „Restaurant“/„Kosmetik“ erscheinen dort als
+  eigene Kategorien.
+- **Statistik-Zeitraum:** `StatsRangePicker` über den Charts: „Gesamter
+  Zeitraum“ (Standard), jeder Monat mit Ausgaben (neueste zuerst) und „Eigener
+  Zeitraum …“ mit Von/Bis (`DatePicker`, beide Tage inklusive). Gefiltert nach
+  dem angezeigten Tag (`receipt_date`, sonst Anlagetag; `statsRange.ts`).
+- **Personen der Liste (`SharedList.members`):** Problem vorher: Personen
+  entstanden erst durch Ausgaben, also ging die erste Ausgabe zu 100 % an den
+  Zahler, die zweite 50/50, und frühere musste man von Hand nachteilen. Jetzt
+  stehen die Personen vorn in `collect_persons`/`collectParticipants`: Splitter,
+  Zahler-Auswahl, Kassensturz (auch ohne eigene Ausgabe), Bon-Scan und
+  Kontoauszug-Import teilen von Anfang an auf alle. Entfernen ändert keine
+  bestehende Ausgabe. Ändern über „N Personen“ im Kopf der Liste
+  (`MembersDialog`). Spalte wird per `ensure_schema_updates` nachgerüstet.
+- **Tutorial:** Beim **ersten Öffnen einer Liste auf einem Gerät** – nach dem
+  Anlegen wie über einen geteilten Link (seit 2026-10-08, zweite Runde; vorher nur
+  nach dem Anlegen). Gemerkt im localStorage (`tutorialStorage.ts`, Schlüssel
+  `yousplit:list:<id>:tutorial-done`, gesetzt bei Abschluss und „Überspringen“).
+  Eine eigene Geräte-ID ist unnötig: der localStorage gehört ohnehin zu genau
+  einem Browser. Hat das Gerät für die Liste schon einen Zahler gemerkt, gilt sie
+  als benutzt und es kommt kein Tutorial (Listen von vor dem Tutorial). Schritte:
+  „Wer ist dabei?“ (zeigt schon eingetragene Personen; speichert `members` nur
+  bei Änderung), „Wer bist du?“ (Name antippen → Zahler auf diesem Gerät,
+  `payerStorage`), Ausgaben eintragen, Wer schuldet wem, Liste teilen.
+- **Verhalten geändert:** Gibt es Personen, aber keinen gemerkten Zahler, zeigt
+  das Formular die Auswahl mit „Bitte wählen …“ statt eines Freitextfelds.
+
+- **Texte (2026-10-08):** alle sichtbaren Texte (per Playwright aus allen Seiten,
+  Tabs und Dialogen gesammelt) auf Rechtschreibung geprüft: „z. B.“ mit
+  Leerzeichen, deutsche Anführungszeichen „…“, „50 %“, „Konto“ statt
+  „Account“, Platzhalter-Name „Max“.
+
+**Verifikation (Container, 2026-10-08):** 75 Backend-Tests, 90 Frontend-Tests,
+Typecheck, Lint, Build grün; Playwright: Tutorial → Personen → erste Ausgabe
+10/10/10 → Kategorie-Vorschlag → eigene Kategorie → Statistik nach Monat und
+eigenem Zeitraum → Kassensturz → neues Gerät über den Link (Tutorial mit den
+eingetragenen Namen) (35 Prüfungen, je bei 320/390/1000 px), dazu die
+Durchgänge aus 2.14. **Nicht** gegen Postgres/Ollama/Docker und nicht auf einem
+echten Handy getestet.
+
+---
+
 ## 3. Coding-Standards
 
 ### 3.1 Grundprinzipien (Clean Code)
@@ -637,9 +805,15 @@ generischen Parsers): immer eine **Vorschau** vor dem Import.
   (`Mapped[...]`, `mapped_column`). Pydantic v2 (`ConfigDict(from_attributes=True)`).
 - **DB-Session** nur über `Depends(get_db)`. Nach Schreiboperationen
   `commit()` + `refresh()`.
-- **Logging:** Fehler mit `print(..., flush=True)` ins Docker-Log schreiben
-  (Muster wie in `ollama_client.py`), damit sie im Container sichtbar sind — nie
-  Details still ans Frontend geben.
+- **Logging:** über das Standard-`logging` mit Modul-Logger
+  (`logging.getLogger("yousplit.<bereich>")`, Setup in `logging_setup.py`, siehe
+  2.12) — kein `print`. Technische Details gehören ins Log; ans Frontend geht
+  nur eine nutzerverständliche Ursache.
+- **Eingaben an der Systemgrenze prüfen** (Request-Schemas, Uploads,
+  KI-Antwort): Feldlängen passend zur DB-Spalte, `allow_inf_nan=False` bei
+  Beträgen, Größenlimit bei Uploads. Internem Code wird vertraut.
+- **Tests:** `python -m unittest discover -s tests` im `backend`-Ordner (SQLite,
+  kein Ollama/Netz nötig). Neue Logik bringt ihren Test mit.
 - **Router** dünn halten: Validierung + Orchestrierung; fachliche Logik in eigene
   Module (wie `ollama_client.py`) auslagern.
 
@@ -648,7 +822,17 @@ generischen Parsers): immer eine **Vorschau** vor dem Import.
 - **TypeScript strict**, keine `any`-Flucht. Props/Datentypen explizit typisieren.
 - **Alle Netzwerkaufrufe** über Funktionen in `api.ts` (nie `fetch` in
   Komponenten). Fehler laufen zentral über `handleResponse` (liest FastAPIs
-  `{"detail": ...}`).
+  `{"detail": ...}`) und werden als `ApiError` (Status + `detail`) bzw.
+  `DuplicateError` (409) geworfen. Fehlermeldungen im UI über
+  `withReason("… fehlgeschlagen", error)` bauen: hängt die Backend-Ursache an.
+- **Getippte Beträge** immer mit `parseAmount` (`format.ts`) lesen, nie mit
+  `parseFloat` (das las "1.234,56" als 1,234 und "12abc" als 12).
+- **Personen der Liste** immer über `collectParticipants(expenses, list.members)`
+  (`participants.ts`).
+- **Kategorien** aus `categories.ts` (`categoryOptions`, `categoryLabel`), nie
+  eine eigene Liste im Komponenten-Code.
+- **Tests:** `npm test` (vitest) für die reinen Module (`*.test.ts` neben der
+  Quelle). Neue reine Logik bringt ihren Test mit.
 - **Tailwind** für Styling (Utility-First, kein separates CSS pro Komponente),
   **`lucide-react`** für Icons.
 - Komponenten fokussiert und wiederverwendbar; reine Berechnungslogik (wie das
@@ -944,7 +1128,11 @@ fortführen:
   direkten Abhängigkeiten (transitive wie pydantic/starlette bleiben frei; bei
   Bedarf mit `pip freeze` nachziehen). Updates bewusst einzeln machen.
 - **Keine Authentifizierung:** Wer die Listen-UUID kennt, hat vollen Zugriff.
-- **Keine automatisierten Tests** vorhanden.
+- **Tests decken nur Teile ab:** Backend 75 `unittest`-Tests (Parser, Duplikate,
+  Fortschritt, Schemas, Upload-Grenzen, Ollama-Client, Personen), Frontend 90 vitest-Tests
+  der reinen Module (seit 2026-10-07). **Ohne** Test: React-Komponenten, die
+  CRUD-Endpunkte der Ausgaben, `settlement.py`, `splits.py`, `currency.py`.
+  Nichts läuft gegen echtes Postgres/Ollama.
 - **CORS** ist fest auf `http://localhost:5173` — vor Deployment anpassen. (Lokaler
   `npm run dev` auf einem anderen Port, z. B. 5174, wird deshalb vom Backend geblockt.)
 - **Docker-Hinweis (Windows-Bind-Mount):** Der Vite-Watcher im Container erkennt
@@ -1000,6 +1188,10 @@ docker compose exec ollama ollama pull qwen2.5vl:3b
 
 # Logs eines Dienstes verfolgen
 docker compose logs -f backend
+
+# Tests (ohne Docker; Backend braucht die Pakete aus requirements.txt)
+cd backend && python -m unittest discover -s tests
+cd frontend && npm test && npm run lint && npm run build
 ```
 
 | Dienst   | URL / Port                          |
@@ -1016,7 +1208,7 @@ docker compose logs -f backend
 
 ---
 
-_Zuletzt aktualisiert: 2026-10-02 (Fortschrittsbalken beim Bon-Scan: Meilensteine `ReceiptJob.progress` + Zeitschätzung, `receiptProgress.ts`, 6 neue Tests; Vision-Modell-Test `qwen3.5:2b` war zu langsam → zurück auf `qwen2.5vl:3b`, `think: false` nur noch bei Qwen3-Modellen; Duplikats-Erkennung beim Bon-Scan: Geschäft + Betrag + Datum, Job-Status `duplicate`, `POST …/confirm`, `duplicates.py`, Auto-Spalte `receipt_jobs.result`; 13 neue Tests). Vorher: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
+_Zuletzt aktualisiert: 2026-10-08, zweite Runde (Tutorial beim ersten Öffnen je Gerät, auch über geteilte Links; Händlerliste mit `= Name`, Rewe-Franchise Yazici; Rechtschreibprüfung aller Texte). Davor 2026-10-08 (s. 2.15: Kategorie-Dropdown mit eigenen Kategorien + Vorschlag aus dem Titel, Bon-KI auf dieselben Kategorien, Statistik-Zeitraum, Personen der Liste `members` + `PUT …/members`, Tutorial nach dem Anlegen; 11 neue Backend-, 26 neue Frontend-Tests). Vorher: 2026-10-07 (Code-Review, s. 2.14: Betrags-Parser Frontend `parseAmount` + Backend `_normalize_amount_text`, EXIF-Drehung der Bon-Fotos, Upload-Limit 20 MB, Validierungslücken (Infinity/NaN/Kategorie-Länge), Sortierung nach angezeigtem Datum, `collectParticipants`, `ApiError`/`withReason`, vitest; Splitter hält das Verhältnis einer eigenen Aufteilung (s. 2.9); Handy-Layout 320–420 px repariert; 22 neue Backend- und 60 Frontend-Tests). Vorher: 2026-10-02 (Fortschrittsbalken beim Bon-Scan: Meilensteine `ReceiptJob.progress` + Zeitschätzung, `receiptProgress.ts`, 6 neue Tests; Vision-Modell-Test `qwen3.5:2b` war zu langsam → zurück auf `qwen2.5vl:3b`, `think: false` nur noch bei Qwen3-Modellen; Duplikats-Erkennung beim Bon-Scan: Geschäft + Betrag + Datum, Job-Status `duplicate`, `POST …/confirm`, `duplicates.py`, Auto-Spalte `receipt_jobs.result`; 13 neue Tests). Vorher: 2026-10-02 (Kontoauszug-Import, s. 2.13: generischer PDF-Parser `bank_statement.py` (pdfplumber) + Händlerliste, Endpunkte `POST …/bank-statement/parse|import`, UI Upload→Vorschau→Import als Einzelausgaben; Komplettanalyse + Training als Zukunftspunkt 4.5 #5 vorgemerkt; 14 Parser-Tests, E2E mit Playwright, nicht an echtem Auszug getestet). Vorher: 2026-09-25 (Bugfix stille Scan-Fehler, s. 2.12: Ursache
 `404 model not found` nach `down -v`; Modell-Auto-Pull `ensure_model` beim Start/
 vor Scan/bei 404; Status-Rückmeldung `ReceiptJob` + Endpunkte `GET/DELETE
 …/receipt-jobs` + Frontend-Polling `useReceiptJobs`/`ReceiptJobsPanel`; zentrales

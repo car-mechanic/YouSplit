@@ -157,7 +157,7 @@ def extract_lines(pdf_bytes: bytes) -> list[str]:
 
     if not any(line.strip() for line in lines):
         raise StatementParseError(
-            "Im PDF wurde kein Text gefunden — vermutlich ein eingescannter "
+            "Im PDF wurde kein Text gefunden – vermutlich ein eingescannter "
             "Kontoauszug. Bitte das PDF direkt aus dem Online-Banking laden."
         )
     return lines
@@ -387,7 +387,7 @@ def parse_lines(lines: list[str]) -> ParseResult:
         )
     if any_guessed:
         warnings.append(
-            "Bei manchen Buchungen war das Vorzeichen im PDF nicht erkennbar — "
+            "Bei manchen Buchungen war das Vorzeichen im PDF nicht erkennbar – "
             "sie wurden als Ausgabe gewertet (außer bei Wörtern wie Gutschrift/"
             "Gehalt). Bitte in der Vorschau prüfen."
         )
@@ -446,14 +446,17 @@ class MerchantEntry:
     # True = auch als Teil eines laengeren Worts treffen ("*FLEISCHEREI" findet
     # "LANDFLEISCHEREI"); False = nur als ganzes Wort/ganze Wortfolge.
     substring: bool = False
+    # Titel der Ausgabe statt des gefundenen Worts ("YAZICI EINZELHANDELS = Rewe":
+    # Franchise-Maerkte stehen im Auszug unter dem Betreiber, nicht der Kette).
+    display: str | None = None
 
 
 def parse_merchant_lines(lines: list[str]) -> list[MerchantEntry]:
     """Liest die Zeilen der Haendlerliste (``food_merchants.txt``).
 
     ``#`` leitet einen Kommentar ein (auch am Zeilenende), leere Zeilen werden
-    ignoriert, ein fuehrender ``*`` markiert einen Teilwort-Treffer. Doppelte
-    Eintraege werden verworfen.
+    ignoriert, ein fuehrender ``*`` markiert einen Teilwort-Treffer, ``= Name``
+    am Ende setzt den Anzeigenamen. Doppelte Eintraege werden verworfen.
     """
     entries: list[MerchantEntry] = []
     seen: set[tuple[str, bool]] = set()
@@ -461,12 +464,20 @@ def parse_merchant_lines(lines: list[str]) -> list[MerchantEntry]:
         text = raw.split("#", 1)[0].strip()
         if not text:
             continue
+        text, _, display = text.partition("=")
+        text = text.strip()
         substring = text.startswith("*")
         keyword = _fold(text.lstrip("*"))
         if not keyword or (keyword, substring) in seen:
             continue
         seen.add((keyword, substring))
-        entries.append(MerchantEntry(keyword=keyword, substring=substring))
+        entries.append(
+            MerchantEntry(
+                keyword=keyword,
+                substring=substring,
+                display=display.strip() or None,
+            )
+        )
     return entries
 
 
@@ -554,9 +565,9 @@ def classify(
     for entry in load_food_merchants():
         word = _match(folded, entry)
         if word is not None and (best is None or len(entry.keyword) > best[0]):
-            best = (len(entry.keyword), word)
+            best = (len(entry.keyword), entry.display or _display_name(word))
     if best is not None:
-        return Classification(category=CATEGORY_FOOD, label=_display_name(best[1]))
+        return Classification(category=CATEGORY_FOOD, label=best[1])
     return Classification(category=None, label=None)
 
 

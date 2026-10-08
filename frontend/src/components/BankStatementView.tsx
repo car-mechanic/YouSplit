@@ -14,6 +14,7 @@ import {
 import { importBankStatement, parseBankStatement } from "../api";
 import type { BankStatementPreview, BankTransaction, Expense } from "../api";
 import { formatDate, formatEuro } from "../format";
+import { collectParticipants } from "../participants";
 import { payerStorageKey } from "../payerStorage";
 
 // Sentinel-Wert des Dropdowns für "Neue Person hinzufügen …"
@@ -28,8 +29,10 @@ const BOOKING_TYPE_PREFIX =
 
 interface BankStatementViewProps {
   listId: string;
-  /** Bestehende Ausgaben – daraus ergeben sich die bekannten Zahler. */
+  /** Bestehende Ausgaben – daraus ergeben sich die bekannten Personen. */
   expenses: Expense[];
+  /** Feste Personen der Liste. */
+  members: string[];
   /** Nach erfolgreichem Import: ListView lädt die Liste neu. */
   onImported: () => void;
 }
@@ -55,11 +58,12 @@ function sumCents(values: number[]): number {
  *
  * Die Erkennung ist generisch (kein bankspezifisches Layout) – deshalb gibt es
  * immer die Vorschau: Treffer lassen sich abwählen, übersehene Buchungen unter
- * „Weitere Ausgaben" nachträglich anhaken.
+ * „Weitere Ausgaben“ nachträglich anhaken.
  */
 function BankStatementView({
   listId,
   expenses,
+  members,
   onImported,
 }: BankStatementViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -70,18 +74,16 @@ function BankStatementView({
   const [preview, setPreview] = useState<BankStatementPreview | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showOthers, setShowOthers] = useState(false);
-  const [result, setResult] = useState<{ created: number; total: number } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    created: number;
+    total: number;
+  } | null>(null);
 
-  // Bekannte Zahler der Liste (Reihenfolge des ersten Auftretens).
-  const knownPayers = useMemo(() => {
-    const names: string[] = [];
-    for (const expense of expenses) {
-      if (!names.includes(expense.payer_name)) names.push(expense.payer_name);
-    }
-    return names;
-  }, [expenses]);
+  // Bekannte Personen der Liste (Zahler und Mit-Esser, wie im Kassensturz)
+  const knownPersons = useMemo(
+    () => collectParticipants(expenses, members),
+    [expenses, members],
+  );
 
   const [payerName, setPayerName] = useState<string>(
     () => localStorage.getItem(payerStorageKey(listId))?.trim() ?? "",
@@ -91,18 +93,18 @@ function BankStatementView({
   const [addingNewPayer, setAddingNewPayer] = useState<boolean>(
     () =>
       !localStorage.getItem(payerStorageKey(listId))?.trim() &&
-      knownPayers.length === 0,
+      knownPersons.length === 0,
   );
 
   // Dropdown-Optionen: Bekannte plus ein evtl. gemerkter Gerätename.
   const payerOptions = useMemo(() => {
-    const options = [...knownPayers];
+    const options = [...knownPersons];
     const current = payerName.trim();
     if (current && !addingNewPayer && !options.includes(current)) {
       options.push(current);
     }
     return options;
-  }, [knownPayers, payerName, addingNewPayer]);
+  }, [knownPersons, payerName, addingNewPayer]);
 
   // Nur Ausgaben (negativ) sind relevant; Einnahmen werden nur gezählt.
   const { foodRows, otherRows, incomeCount } = useMemo(() => {
@@ -124,7 +126,8 @@ function BankStatementView({
   // den Typ nicht immer zuverlässig).
   function isPdf(file: File): boolean {
     return (
-      file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf")
     );
   }
 
@@ -151,7 +154,9 @@ function BankStatementView({
       setStage("preview");
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Der Kontoauszug konnte nicht gelesen werden.",
+        err instanceof Error
+          ? err.message
+          : "Der Kontoauszug konnte nicht gelesen werden.",
       );
       setStage("idle");
     }
@@ -350,7 +355,9 @@ function BankStatementView({
               <span className="text-sm font-semibold text-gray-700">
                 PDF hierher ziehen oder klicken zum Auswählen
               </span>
-              <span className="text-xs text-gray-400">Nur PDF-Dateien (.pdf)</span>
+              <span className="text-xs text-gray-400">
+                Nur PDF-Dateien (.pdf)
+              </span>
             </button>
           )}
 
@@ -410,8 +417,8 @@ function BankStatementView({
 
           {foodRows.length === 0 ? (
             <p className="rounded-xl bg-gray-50 px-4 py-4 text-sm text-gray-500">
-              Keine Lebensmitteleinkäufe erkannt. Unter „Weitere Ausgaben" kannst
-              du Buchungen von Hand auswählen.
+              Keine Lebensmitteleinkäufe erkannt. Unter „Weitere Ausgaben“
+              kannst du Buchungen von Hand auswählen.
             </p>
           ) : (
             <ul className="space-y-2">{foodRows.map(renderRow)}</ul>
@@ -445,7 +452,9 @@ function BankStatementView({
 
           {incomeCount > 0 && (
             <p className="mt-3 text-xs text-gray-400">
-              {incomeCount} Einnahme(n) im Auszug werden ignoriert.
+              {incomeCount === 1
+                ? "1 Einnahme im Auszug wird ignoriert."
+                : `${incomeCount} Einnahmen im Auszug werden ignoriert.`}
             </p>
           )}
 
@@ -482,7 +491,7 @@ function BankStatementView({
                 type="text"
                 value={payerName}
                 onChange={(event) => setPayerName(event.target.value)}
-                placeholder="z.B. Kevin"
+                placeholder="z. B. Max"
                 maxLength={100}
                 className={inputClass}
               />
@@ -503,7 +512,9 @@ function BankStatementView({
             }
             className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
           >
-            {stage === "importing" && <Loader2 className="h-4 w-4 animate-spin" />}
+            {stage === "importing" && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
             {selectedRows.length === 0
               ? "Keine Buchung ausgewählt"
               : `${selectedRows.length} Buchung${selectedRows.length === 1 ? "" : "en"} anlegen (${formatEuro(selectedTotal)})`}
@@ -519,7 +530,7 @@ function BankStatementView({
             {result.created} Ausgabe{result.created === 1 ? "" : "n"} angelegt
           </p>
           <p className="mt-1 text-sm text-gray-500">
-            Gesamt {formatEuro(result.total)} – du findest sie im Tab „Ausgaben"
+            Gesamt {formatEuro(result.total)} – du findest sie im Tab „Ausgaben“
             und im Kassensturz.
           </p>
           <button

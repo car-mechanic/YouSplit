@@ -10,9 +10,9 @@
  * Rest-Cent ("1-Cent-Problem") wird der ersten *ungelockten* Person zugewiesen.
  *
  * Locking-Konvention: `locked === true` heißt "vom Nutzer manuell gesetzt".
- * Ungelockte Einträge werden automatisch gleichmäßig aus dem Restbetrag
- * aufgefüllt — sie tragen also immer den fairen Anteil dessen, was nach den
- * gelockten Werten übrig bleibt.
+ * Ungelockte Einträge teilen sich automatisch, was nach den gelockten Werten
+ * übrig bleibt — und zwar in ihrem bisherigen Verhältnis: eine faire Aufteilung
+ * bleibt fair, eine eigene (z. B. gespeicherte 70/30) bleibt 70/30.
  */
 
 import type { Splits } from "./api";
@@ -98,11 +98,29 @@ function pickRemainderIndex(
   return maxIndex;
 }
 
+/** Wie die Ungelockten den Rest unter sich aufteilen. */
+export type Rebalance = "keep-ratio" | "even";
+
 /**
- * Verteilt den nach den gelockten Werten verbleibenden Rest gleichmäßig auf die
- * ungelockten Einträge (Prozent-/Betrag-Modus). Damit gilt: Lockt der Nutzer
- * eine Person auf einen Wert, teilen sich alle übrigen den Rest — zieht man bei
- * X ab, bekommen die Ungelockten automatisch mehr (und umgekehrt).
+ * Sind die Werte bis auf den Rundungs-Cent gleich? Eine faire Aufteilung trägt
+ * den Rest-Cent bei einer Person (33,34 / 33,33 / 33,33) und soll trotzdem als
+ * fair gelten — sonst würde aus dem einen Cent ein dauerhaftes "Verhältnis".
+ */
+export function isEvenSplit(values: number[]): boolean {
+  if (values.length === 0) return true;
+  return Math.max(...values) - Math.min(...values) <= 0.01 + 1e-9;
+}
+
+/**
+ * Verteilt den nach den gelockten Werten verbleibenden Rest auf die ungelockten
+ * Einträge (Prozent-/Betrag-Modus). Damit gilt: Lockt der Nutzer eine Person auf
+ * einen Wert, teilen sich alle übrigen den Rest — zieht man bei X ab, bekommen
+ * die Ungelockten automatisch mehr (und umgekehrt).
+ *
+ * `keep-ratio` (Standard): die Ungelockten behalten ihr Verhältnis zueinander.
+ * Waren sie gleich, bleibt es gleichmäßig; eine eigene Aufteilung (70/30) wird
+ * NICHT still zu 50/50, wenn sich Betrag oder Teilnehmer ändern. `even` verteilt
+ * bewusst gleichmäßig neu (Nutzer gibt einen fixierten Wert wieder frei).
  *
  * Im Anteile-Modus (kein fester Gesamtwert) bleiben die Einträge unverändert.
  */
@@ -110,6 +128,7 @@ export function redistributeUnlocked(
   entries: SplitEntry[],
   mode: SplitMode,
   amount: number,
+  rebalance: Rebalance = "keep-ratio",
 ): SplitEntry[] {
   const total = modeTotal(mode, amount);
   const next = entries.map((entry) => ({ ...entry }));
@@ -123,7 +142,11 @@ export function redistributeUnlocked(
     .reduce((sum, entry) => sum + entry.value, 0);
   const remaining = Math.max(0, round2(total - lockedSum));
   // Rest-Cent geht an die erste ungelockte Person (Index 0 der Ungelockten).
-  const shares = distributeEvenly(remaining, unlocked.length, 0);
+  const even =
+    rebalance === "even" || isEvenSplit(unlocked.map((entry) => entry.value));
+  const shares = even
+    ? distributeEvenly(remaining, unlocked.length, 0)
+    : resolveAmounts(unlocked, remaining);
 
   let k = 0;
   for (const entry of next) {
@@ -232,6 +255,10 @@ export function clampValue(value: number, mode: SplitMode, amount: number): numb
  * raus. Anschließend werden die ungelockten Einträge neu ausbalanciert, damit
  * die Aufteilung stimmig bleibt (im Anteile-Modus erhalten neue Personen 1
  * Anteil).
+ *
+ * War die Aufteilung der Ungelockten fair, teilen sich Neue gleichberechtigt
+ * mit hinein. War sie eine eigene (70/30), bleibt sie stehen und Neue starten
+ * mit 0 — sonst würde schon das Tippen eines neuen Zahlernamens sie zerstören.
  */
 export function syncEntries(
   entries: SplitEntry[],
@@ -239,6 +266,11 @@ export function syncEntries(
   mode: SplitMode,
   amount: number,
 ): SplitEntry[] {
+  const wasEven = isEvenSplit(
+    entries
+      .filter((entry) => !entry.locked && names.includes(entry.name))
+      .map((entry) => entry.value),
+  );
   const next: SplitEntry[] = names.map((name) => {
     const existing = entries.find((entry) => entry.name === name);
     if (existing) return { ...existing };
@@ -246,7 +278,7 @@ export function syncEntries(
     // ausbalanciert, da ungelockt).
     return { name, value: mode === "shares" ? 1 : 0, locked: false };
   });
-  return redistributeUnlocked(next, mode, amount);
+  return redistributeUnlocked(next, mode, amount, wasEven ? "even" : "keep-ratio");
 }
 
 /**

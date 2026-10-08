@@ -56,7 +56,7 @@ function CurrencySelect({ value, onChange, id, className }: CurrencySelectProps)
           {code}
         </option>
       ))}
-      {!expanded && <option value={MORE}>Mehr…</option>}
+      {!expanded && <option value={MORE}>Mehr …</option>}
     </select>
   );
 }

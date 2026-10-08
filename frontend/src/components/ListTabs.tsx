@@ -24,6 +24,13 @@ const TABS: TabDef[] = [
   { id: "bankstatement", label: "Kontoauszug", icon: Landmark },
 ];
 
+// Schmale Screens: Icon über dem Text und kleinere Schrift, damit vier Tabs
+// nebeneinander passen ("Kontoauszug" ragte sonst aus der Leiste). flex-auto
+// gibt langen Wörtern dort mehr Breite als kurzen; min-w-0 erlaubt dem Text,
+// notfalls mit … zu kürzen statt überzulaufen.
+const TAB_BASE =
+  "flex min-w-0 flex-auto flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-2 text-[11px] transition sm:flex-1 sm:flex-row sm:gap-1.5 sm:px-2 sm:py-2.5 sm:text-sm";
+
 interface ListTabsProps {
   active: ListTab;
   onChange: (tab: ListTab) => void;
@@ -51,14 +58,14 @@ function ListTabs({ active, onChange }: ListTabsProps) {
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
-            className={
+            className={`${TAB_BASE} ${
               isActive
-                ? "flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-2 py-2.5 text-sm font-semibold text-white shadow-sm transition"
-                : "flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2.5 text-sm font-medium text-gray-500 transition hover:bg-gray-50 hover:text-gray-700"
-            }
+                ? "bg-emerald-600 font-semibold text-white shadow-sm"
+                : "font-medium text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+            }`}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="truncate">{tab.label}</span>
+            <span className="max-w-full truncate">{tab.label}</span>
           </button>
         );
       })}

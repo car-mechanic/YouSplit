@@ -1,11 +1,24 @@
 import { useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, RefObject } from "react";
 import { Camera, Loader2, Plus, X } from "lucide-react";
-import { addExpense, DuplicateError, uploadReceipt } from "../api";
+import {
+  addExpense,
+  ApiError,
+  DuplicateError,
+  uploadReceipt,
+  withReason,
+} from "../api";
 import type { Expense } from "../api";
-import { formatEuro } from "../format";
+import {
+  categoryOptions,
+  FALLBACK_CATEGORY,
+  suggestCategory,
+} from "../categories";
+import { formatMoney, parseAmount } from "../format";
+import { collectParticipants } from "../participants";
 import { payerStorageKey } from "../payerStorage";
 import AdvancedSplitter from "./AdvancedSplitter";
+import CategorySelect from "./CategorySelect";
 import type { AdvancedSplitterHandle } from "./AdvancedSplitter";
 import ConfirmDialog from "./ConfirmDialog";
 import CurrencySelect from "./CurrencySelect";
@@ -32,8 +45,10 @@ interface DuplicatePrompt {
 
 interface ExpenseFormProps {
   listId: string;
-  /** Alle Ausgaben der Liste – speisen das Zahler-Dropdown (bekannte Zahler). */
+  /** Alle Ausgaben der Liste – daraus ergeben sich die bekannten Personen. */
   expenses: Expense[];
+  /** Feste Personen der Liste (stehen vorn in Zahler-Auswahl und Splitter). */
+  members: string[];
   /** Wird nach erfolgreichem Anlegen/Scannen mit der neuen Ausgabe aufgerufen. */
   onExpenseAdded: (expense: Expense) => void;
   /**
@@ -57,11 +72,15 @@ interface ExpenseFormProps {
 function ExpenseForm({
   listId,
   expenses,
+  members,
   onExpenseAdded,
   onReceiptQueued,
   titleInputRef,
 }: ExpenseFormProps) {
   const [title, setTitle] = useState("");
+  // Kategorie folgt dem Titel (Vorschlag), bis der Nutzer selbst eine wählt.
+  const [category, setCategory] = useState<string>(FALLBACK_CATEGORY);
+  const [categoryChosen, setCategoryChosen] = useState(false);
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("EUR");
   const [expenseDate, setExpenseDate] = useState(todayIso);
@@ -74,9 +93,12 @@ function ExpenseForm({
   const [payerName, setPayerName] = useState<string>(
     () => localStorage.getItem(payerStorageKey(listId))?.trim() ?? "",
   );
-  // Ohne gemerkten Namen direkt im Freitext-Modus ("Neue Person") starten.
+  // Freitext ("Neue Person") nur, wenn es niemanden zur Auswahl gibt – sonst
+  // Dropdown, notfalls mit "Bitte wählen …".
   const [addingNewPayer, setAddingNewPayer] = useState<boolean>(
-    () => !localStorage.getItem(payerStorageKey(listId))?.trim(),
+    () =>
+      !localStorage.getItem(payerStorageKey(listId))?.trim() &&
+      collectParticipants(expenses, members).length === 0,
   );
   // Listenwechsel ohne Remount: gemerkten Namen der neuen Liste übernehmen.
   // setState während des Renderns ist Reacts empfohlener Weg dafür (statt Effekt).
@@ -85,7 +107,9 @@ function ExpenseForm({
     setKnownListId(listId);
     const stored = localStorage.getItem(payerStorageKey(listId))?.trim();
     setPayerName(stored ?? "");
-    setAddingNewPayer(!stored);
+    setAddingNewPayer(
+      !stored && collectParticipants(expenses, members).length === 0,
+    );
   }
 
   const [saving, setSaving] = useState(false);
@@ -100,51 +124,56 @@ function ExpenseForm({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newPayerInputRef = useRef<HTMLInputElement>(null);
 
-  // Bekannte Zahler: alle Personen mit mind. einer Ausgabe, in Reihenfolge des
-  // ersten Auftretens.
-  const knownPayers = useMemo(() => {
-    const seen = new Set<string>();
-    const names: string[] = [];
-    for (const expense of expenses) {
-      if (!seen.has(expense.payer_name)) {
-        seen.add(expense.payer_name);
-        names.push(expense.payer_name);
-      }
-    }
-    return names;
-  }, [expenses]);
+  // Bekannte Personen der Liste: Zahler UND reine Mit-Esser aus bestehenden
+  // Aufteilungen – dieselben, die der Kassensturz kennt.
+  const knownPersons = useMemo(
+    () => collectParticipants(expenses, members),
+    [expenses, members],
+  );
+  const categories = useMemo(() => categoryOptions(expenses), [expenses]);
 
-  // Dropdown-Optionen: bekannte Zahler plus – falls noch nicht enthalten – der
+  // Dropdown-Optionen: bekannte Personen plus – falls noch nicht enthalten – der
   // aktuell gewählte Name (z. B. der gemerkte Gerätename ohne eigene Ausgabe),
   // damit die <select>-value stets zu einer Option passt.
   const payerOptions = useMemo(() => {
-    const options = [...knownPayers];
+    const options = [...knownPersons];
     const current = payerName.trim();
     if (current && !addingNewPayer && !options.includes(current)) {
       options.push(current);
     }
     return options;
-  }, [knownPayers, payerName, addingNewPayer]);
+  }, [knownPersons, payerName, addingNewPayer]);
 
   // Betrag als Zahl fürs Splitter-Preview/-Ergebnis (0, solange leer/ungültig).
-  const parsedAmountValue = Number.parseFloat(amount.replace(",", "."));
-  const splitAmount =
-    Number.isFinite(parsedAmountValue) && parsedAmountValue > 0
-      ? parsedAmountValue
-      : 0;
+  const parsedAmountValue = parseAmount(amount);
+  const splitAmount = parsedAmountValue > 0 ? parsedAmountValue : 0;
 
-  // Teilnehmer des Splitters: alle bekannten Zahler plus der aktuell gewählte
+  // Teilnehmer des Splitters: alle bekannten Personen plus der aktuell gewählte
   // Zahler (auch ein noch neuer Name) – so ist der Zahler immer dabei.
   const splitParticipants = useMemo(() => {
-    const names = [...knownPayers];
+    const names = [...knownPersons];
     const current = payerName.trim();
     if (current && !names.includes(current)) names.push(current);
     return names;
-  }, [knownPayers, payerName]);
+  }, [knownPersons, payerName]);
+
+  function handleTitleChange(next: string) {
+    setTitle(next);
+    if (!categoryChosen) {
+      setCategory(suggestCategory(next, expenses) ?? FALLBACK_CATEGORY);
+    }
+  }
+
+  function handleCategoryChange(next: string) {
+    setCategory(next);
+    setCategoryChosen(true);
+  }
 
   function resetForm() {
     // Zahler bewusst stehen lassen – oft trägt dieselbe Person mehrere Ausgaben ein
     setTitle("");
+    setCategory(FALLBACK_CATEGORY);
+    setCategoryChosen(false);
     setAmount("");
     // Splitter auf faire Standardaufteilung zurücksetzen (Remount via key)
     setSplitterKey((key) => key + 1);
@@ -181,24 +210,23 @@ function ExpenseForm({
     rememberPayer(value);
   }
 
-  // Zurück von der Freitext-Eingabe zur Auswahl (nur mit bekannten Zahlern)
+  // Zurück von der Freitext-Eingabe zur Auswahl (nur mit bekannten Personen)
   function cancelNewPayer() {
     setAddingNewPayer(false);
-    setPayerName(knownPayers[0] ?? "");
+    setPayerName(knownPersons[0] ?? "");
   }
 
   async function handleAddExpense(event: FormEvent) {
     event.preventDefault();
 
-    // Komma als Dezimaltrenner erlauben ("4,50" -> 4.50)
-    const parsedAmount = Number.parseFloat(amount.replace(",", "."));
+    const parsedAmount = parseAmount(amount);
     if (
       !title.trim() ||
       !payerName.trim() ||
       Number.isNaN(parsedAmount) ||
       parsedAmount <= 0
     ) {
-      setFormError("Bitte Titel, Betrag (> 0) und Zahler angeben.");
+      setFormError("Bitte Titel, Betrag (größer als 0) und Zahler angeben.");
       return;
     }
 
@@ -210,6 +238,7 @@ function ExpenseForm({
       amount: parsedAmount,
       payer_name: payerName.trim(),
       split_ratio: split?.splitRatio ?? 0.5,
+      category,
       receipt_date: expenseDate,
       currency,
       splits: split?.splits ?? null,
@@ -225,7 +254,7 @@ function ExpenseForm({
       if (error instanceof DuplicateError) {
         // Speichern anhalten und Warnung zeigen; "Trotzdem speichern" erzwingt es
         setDuplicate({
-          message: `Eine Ausgabe über ${formatEuro(parsedAmount)} am selben Tag existiert bereits. Trotzdem speichern?`,
+          message: `Eine Ausgabe über ${formatMoney(parsedAmount, currency)} am selben Tag existiert bereits. Trotzdem speichern?`,
           onConfirm: async () => {
             onExpenseAdded(await addExpense(listId, data, true));
             commitPayer(data.payer_name);
@@ -233,7 +262,9 @@ function ExpenseForm({
           },
         });
       } else {
-        setFormError("Ausgabe konnte nicht gespeichert werden.");
+        setFormError(
+          withReason("Ausgabe konnte nicht gespeichert werden", error),
+        );
       }
     } finally {
       setSaving(false);
@@ -243,7 +274,9 @@ function ExpenseForm({
   function handleScanClick() {
     // Das Backend braucht den Zahler, bevor die Datei ausgewählt wird
     if (!payerName.trim()) {
-      setFormError('Bitte zuerst bei "Wer hat bezahlt?" einen Namen eintragen.');
+      setFormError(
+        'Bitte zuerst bei "Wer hat bezahlt?" einen Namen eintragen.',
+      );
       return;
     }
     setFormError(null);
@@ -276,9 +309,12 @@ function ExpenseForm({
       })
       .catch((error: unknown) => {
         setScanNotice(null);
-        const reason = error instanceof Error ? error.message : "";
+        // Antwortet das Backend mit einem Fehler, läuft es – dann dessen Ursache
+        // zeigen statt der Rückfrage.
         setFormError(
-          `Der Beleg-Upload ist fehlgeschlagen${reason ? `: ${reason}` : ""}. Läuft das Backend?`,
+          error instanceof ApiError
+            ? withReason("Der Beleg-Upload ist fehlgeschlagen", error)
+            : "Der Beleg-Upload ist fehlgeschlagen. Läuft das Backend?",
         );
       });
   }
@@ -289,9 +325,11 @@ function ExpenseForm({
     try {
       await duplicate.onConfirm();
       setDuplicate(null);
-    } catch {
+    } catch (error) {
       setDuplicate(null);
-      setFormError("Speichern trotz Duplikat fehlgeschlagen.");
+      setFormError(
+        withReason("Speichern trotz Duplikat fehlgeschlagen", error),
+      );
     } finally {
       setDuplicateBusy(false);
     }
@@ -321,10 +359,30 @@ function ExpenseForm({
               ref={titleInputRef}
               type="text"
               value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder='z.B. "Pizza"'
+              onChange={(event) => handleTitleChange(event.target.value)}
+              placeholder="z. B. Pizza"
               maxLength={200}
               className={inputClass}
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label
+              htmlFor="expense-category"
+              className="mb-1 flex items-center gap-2 text-sm font-medium text-gray-700"
+            >
+              Kategorie
+              {!categoryChosen && category !== FALLBACK_CATEGORY && (
+                <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                  Vorschlag
+                </span>
+              )}
+            </label>
+            <CategorySelect
+              id="expense-category"
+              value={category}
+              options={categories}
+              onChange={handleCategoryChange}
             />
           </div>
 
@@ -378,6 +436,11 @@ function ExpenseForm({
                 onChange={(event) => handlePayerSelect(event.target.value)}
                 className={`${inputClass} bg-white`}
               >
+                {!payerName.trim() && (
+                  <option value="" disabled>
+                    Bitte wählen …
+                  </option>
+                )}
                 {payerOptions.map((name) => (
                   <option key={name} value={name}>
                     {name}
@@ -393,12 +456,12 @@ function ExpenseForm({
                   type="text"
                   value={payerName}
                   onChange={(event) => setPayerName(event.target.value)}
-                  placeholder="z.B. Kevin"
+                  placeholder="z. B. Max"
                   maxLength={100}
                   className={inputClass}
                 />
                 {/* Zurück zur Auswahl nur anbieten, wenn es Bekannte gibt */}
-                {knownPayers.length > 0 && (
+                {knownPersons.length > 0 && (
                   <button
                     type="button"
                     onClick={cancelNewPayer}

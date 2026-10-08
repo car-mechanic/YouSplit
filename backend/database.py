@@ -56,3 +56,6 @@ def ensure_schema_updates() -> None:
                 "progress INTEGER NOT NULL DEFAULT 0"
             )
         )
+        connection.execute(
+            text("ALTER TABLE shared_lists ADD COLUMN IF NOT EXISTS members JSON")
+        )

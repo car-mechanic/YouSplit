@@ -6,9 +6,10 @@ import os
 import time
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageOps
 from pydantic import ValidationError
 
+from categories import DEFAULT_CATEGORIES, FALLBACK_CATEGORY, LEGACY_ALIASES
 from schemas import ReceiptAnalysis
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://ollama:11434")
@@ -64,8 +65,8 @@ RECEIPT_PROMPT = (
     "Suche es sorgfaeltig und gib es IMMER im Format YYYY-MM-DD zurueck "
     "(Beispiel: 05.12.2025 wird zu 2025-12-05; 05.12.25 wird zu 2025-12-05). "
     "Nur wenn WIRKLICH kein Datum lesbar ist, setze 'date' auf null.\n"
-    "4) 'category': GENAU eine aus dieser Liste: Lebensmittel, Kosmetik, "
-    "Restaurant, Haushalt, Sonstiges. Rate keine anderen Werte.\n"
+    f"4) 'category': GENAU eine aus dieser Liste: {', '.join(DEFAULT_CATEGORIES)}. "
+    "Rate keine anderen Werte.\n"
     "5) 'currency': die Waehrung des Bons als 3-Buchstaben-Code (z.B. EUR, USD, "
     "CHF, GBP). Erkennbar am Waehrungssymbol (€, $, CHF, £) oder Land. Ist die "
     "Waehrung nicht erkennbar, setze 'currency' auf 'EUR'.\n"
@@ -73,14 +74,10 @@ RECEIPT_PROMPT = (
     "'title', 'amount', 'date', 'category', 'currency'."
 )
 
-ALLOWED_CATEGORIES = {
-    "Lebensmittel",
-    "Kosmetik",
-    "Restaurant",
-    "Haushalt",
-    "Sonstiges",
-}
-FALLBACK_CATEGORY = "Unknown/Manuell"
+ALLOWED_CATEGORIES = set(DEFAULT_CATEGORIES)
+# Titel, falls das Modell kein Geschaeft lesen konnte (leerer String). Ohne ihn
+# stuende die Ausgabe namenlos in der Liste.
+FALLBACK_TITLE = "Kassenbon"
 
 
 class ReceiptAnalysisError(Exception):
@@ -229,9 +226,13 @@ MAX_IMAGE_PIXELS = 1_800_000
 
 
 def _prepare_image(image_bytes: bytes) -> bytes:
-    """Verkleinert zu grosse Bilder und normalisiert auf JPEG."""
+    """Dreht das Bild aufrecht, verkleinert zu grosse Bilder, normalisiert auf JPEG."""
     try:
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        # Handy-Kameras speichern Hochkant-Fotos oft liegend und vermerken die
+        # Drehung nur im EXIF-Tag. Das JPEG unten enthaelt kein EXIF mehr — ohne
+        # exif_transpose bekaeme das Modell den Bon um 90° gedreht zu lesen.
+        image = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes)))
+        image = image.convert("RGB")
     except Exception as exc:
         logger.warning("Bild nicht lesbar: %s", exc)
         raise ReceiptAnalysisError("Die Bilddatei konnte nicht gelesen werden") from exc
@@ -359,7 +360,8 @@ async def analyze_receipt(image_bytes: bytes) -> ReceiptAnalysis:
             "Die KI konnte den Bon nicht lesen (Antwort unbrauchbar)"
         ) from exc
 
-    # Halluzinierte Kategorien auf den definierten Fallback mappen
+    # Alte Namen umbenennen, halluzinierte Kategorien auf den Fallback mappen
+    analysis.category = LEGACY_ALIASES.get(analysis.category, analysis.category)
     if analysis.category not in ALLOWED_CATEGORIES:
         logger.info(
             "Unbekannte Kategorie '%s' → '%s'", analysis.category, FALLBACK_CATEGORY
@@ -367,5 +369,5 @@ async def analyze_receipt(image_bytes: bytes) -> ReceiptAnalysis:
         analysis.category = FALLBACK_CATEGORY
 
     # DB-Spalte ist String(200)
-    analysis.title = analysis.title.strip()[:200]
+    analysis.title = analysis.title.strip()[:200] or FALLBACK_TITLE
     return analysis

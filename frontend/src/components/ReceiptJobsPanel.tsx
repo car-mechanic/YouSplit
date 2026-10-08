@@ -91,8 +91,8 @@ function ProcessingCard({ job, label, meta }: ProcessingCardProps) {
  *
  * Zeigt laufende Scans mit Fortschrittsbalken (plus optionalem Hinweis, etwa
  * beim einmaligen Modell-Download), fehlgeschlagene Scans mit Ursache und
- * „Verwerfen"-Button sowie **doppelte Bons** (gleiches Geschäft, gleicher Betrag,
- * gleiches Datum) mit „Verwerfen" und „Trotzdem hinzufügen". Erfolgreiche Scans
+ * „Verwerfen“-Button sowie **doppelte Bons** (gleiches Geschäft, gleicher Betrag,
+ * gleiches Datum) mit „Verwerfen“ und „Trotzdem hinzufügen“. Erfolgreiche Scans
  * tauchen hier nicht auf – sie landen direkt in der Ausgabenliste. Rendert nichts,
  * wenn es keine Jobs gibt.
  */
@@ -126,7 +126,7 @@ function ReceiptJobsPanel({
   return (
     <ul className="mt-4 space-y-2" aria-live="polite">
       {jobs.map((job) => {
-        const label = job.filename ? `„${job.filename}"` : "Beleg";
+        const label = job.filename ? `„${job.filename}“` : "Beleg";
         const meta = `${job.payer_name} · ${formatTime(job.created_at)} Uhr`;
 
         if (job.status === "failed") {

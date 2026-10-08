@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BarChart3, PieChart as PieChartIcon } from "lucide-react";
 import {
   Bar,
@@ -13,7 +13,11 @@ import {
   YAxis,
 } from "recharts";
 import type { Expense } from "../api";
+import { categoryLabel } from "../categories";
 import { formatEuro } from "../format";
+import { filterByRange } from "../statsRange";
+import type { StatsRange } from "../statsRange";
+import StatsRangePicker from "./StatsRangePicker";
 
 // Emerald/Teal/Cyan-Palette: die Kategorien im Donut bekommen der Reihe nach
 // (nach Betrag absteigend) eine Farbe. Bewusst nur "kühle Grün-Blau-Töne", damit
@@ -57,17 +61,24 @@ function formatPercent(value: number): string {
  * Reine Darstellung – kein eigener Fach-State.
  */
 function StatisticsBoard({ expenses }: StatisticsBoardProps) {
+  // Gewählter Zeitraum (Standard: alles). Lebt nur hier – reine Ansichtssache.
+  const [range, setRange] = useState<StatsRange>({ kind: "all" });
+  const inRange = useMemo(
+    () => filterByRange(expenses, range),
+    [expenses, range],
+  );
+
   const { byCategory, byPerson, total } = useMemo(() => {
     const categorySums = new Map<string, number>();
     const personSums = new Map<string, number>();
     let sum = 0;
 
-    for (const expense of expenses) {
+    for (const expense of inRange) {
       // Immer in EUR (Basiswährung) aggregieren: Fremdwährungen über den
       // gespeicherten Tageskurs umrechnen (amount * exchange_rate).
       const eur = expense.amount * expense.exchange_rate;
-      // Leere Kategorie defensiv auf "Sonstiges" abbilden
-      const category = expense.category?.trim() || "Sonstiges";
+      // Leere Kategorie und Altwert "Unknown/Manuell" als "Ohne Kategorie"
+      const category = categoryLabel(expense.category);
       categorySums.set(category, (categorySums.get(category) ?? 0) + eur);
       personSums.set(
         expense.payer_name,
@@ -87,7 +98,7 @@ function StatisticsBoard({ expenses }: StatisticsBoardProps) {
       byPerson: toSortedData(personSums),
       total: sum,
     };
-  }, [expenses]);
+  }, [inRange]);
 
   // ---------- Empty State ----------
   if (expenses.length === 0) {
@@ -98,7 +109,9 @@ function StatisticsBoard({ expenses }: StatisticsBoardProps) {
             <BarChart3 className="h-7 w-7 text-emerald-600" />
           </div>
           <div>
-            <p className="font-semibold text-gray-900">Noch keine Statistiken</p>
+            <p className="font-semibold text-gray-900">
+              Noch keine Statistiken
+            </p>
             <p className="mt-1 text-sm text-gray-500">
               Füge Ausgaben hinzu, um Statistiken zu sehen – wir werten sie
               automatisch nach Kategorie und Person aus.
@@ -111,131 +124,151 @@ function StatisticsBoard({ expenses }: StatisticsBoardProps) {
 
   return (
     <div className="mt-4 space-y-4">
-      {/* ---------- Chart 1: Ausgaben nach Kategorie (Donut) ---------- */}
-      <section className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
-          <PieChartIcon className="h-5 w-5 text-emerald-600" />
-          Ausgaben nach Kategorie
-        </h2>
+      <StatsRangePicker
+        expenses={expenses}
+        value={range}
+        onChange={setRange}
+        matchCount={inRange.length}
+      />
 
-        {/* Donut mit zentrierter Gesamtsumme in der Mitte */}
-        <div className="relative mt-4">
-          <ResponsiveContainer width="100%" height={240}>
-            <PieChart>
-              <Pie
-                data={byCategory}
-                dataKey="value"
-                nameKey="name"
-                innerRadius={62}
-                outerRadius={92}
-                paddingAngle={byCategory.length > 1 ? 2 : 0}
-                strokeWidth={0}
-              >
-                {byCategory.map((entry, index) => (
-                  <Cell
-                    key={entry.name}
-                    fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+      {inRange.length === 0 ? (
+        <section className="rounded-xl border border-gray-100 bg-white px-6 py-10 text-center shadow-sm">
+          <p className="font-semibold text-gray-900">
+            Keine Ausgaben in diesem Zeitraum
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            Wähle einen anderen Monat oder einen größeren Zeitraum.
+          </p>
+        </section>
+      ) : (
+        <>
+          {/* ---------- Chart 1: Ausgaben nach Kategorie (Donut) ---------- */}
+          <section className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+              <PieChartIcon className="h-5 w-5 text-emerald-600" />
+              Ausgaben nach Kategorie
+            </h2>
+
+            {/* Donut mit zentrierter Gesamtsumme in der Mitte */}
+            <div className="relative mt-4">
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={byCategory}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={62}
+                    outerRadius={92}
+                    paddingAngle={byCategory.length > 1 ? 2 : 0}
+                    strokeWidth={0}
+                  >
+                    {byCategory.map((entry, index) => (
+                      <Cell
+                        key={entry.name}
+                        fill={CATEGORY_COLORS[index % CATEGORY_COLORS.length]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value) => formatEuro(Number(value))}
+                    contentStyle={{
+                      borderRadius: "0.75rem",
+                      border: "1px solid #f3f4f6",
+                      fontSize: "0.875rem",
+                    }}
                   />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value) => formatEuro(Number(value))}
-                contentStyle={{
-                  borderRadius: "0.75rem",
-                  border: "1px solid #f3f4f6",
-                  fontSize: "0.875rem",
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          {/* Mittelbeschriftung: Gesamtsumme (rein visuell, ignoriert Klicks) */}
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xs uppercase tracking-wide text-gray-400">
-              Gesamt
-            </span>
-            <span className="text-xl font-bold text-gray-900">
-              {formatEuro(total)}
-            </span>
-          </div>
-        </div>
+                </PieChart>
+              </ResponsiveContainer>
+              {/* Mittelbeschriftung: Gesamtsumme (rein visuell, ignoriert Klicks) */}
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-xs uppercase tracking-wide text-gray-400">
+                  Gesamt
+                </span>
+                <span className="text-xl font-bold text-gray-900">
+                  {formatEuro(total)}
+                </span>
+              </div>
+            </div>
 
-        {/* Eigene Legende mit Betrag + Prozentanteil (mobil besser lesbar als
+            {/* Eigene Legende mit Betrag + Prozentanteil (mobil besser lesbar als
             Beschriftungen direkt im Ring) */}
-        <ul className="mt-4 space-y-2">
-          {byCategory.map((entry, index) => (
-            <li
-              key={entry.name}
-              className="flex items-center justify-between gap-3 text-sm"
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span
-                  className="h-3 w-3 shrink-0 rounded-full"
-                  style={{
-                    backgroundColor:
-                      CATEGORY_COLORS[index % CATEGORY_COLORS.length],
-                  }}
-                />
-                <span className="truncate text-gray-700">{entry.name}</span>
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                <span className="font-semibold text-gray-900">
-                  {formatEuro(entry.value)}
-                </span>
-                <span className="w-14 text-right text-gray-400">
-                  {formatPercent((entry.value / total) * 100)}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      </section>
+            <ul className="mt-4 space-y-2">
+              {byCategory.map((entry, index) => (
+                <li
+                  key={entry.name}
+                  className="flex items-center justify-between gap-3 text-sm"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+                      }}
+                    />
+                    <span className="truncate text-gray-700">{entry.name}</span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="font-semibold text-gray-900">
+                      {formatEuro(entry.value)}
+                    </span>
+                    <span className="w-14 text-right text-gray-400">
+                      {formatPercent((entry.value / total) * 100)}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-      {/* ---------- Chart 2: Wer hat wie viel bezahlt? (Balken) ---------- */}
-      <section className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
-          <BarChart3 className="h-5 w-5 text-emerald-600" />
-          Wer hat wie viel bezahlt?
-        </h2>
+          {/* ---------- Chart 2: Wer hat wie viel bezahlt? (Balken) ---------- */}
+          <section className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+              <BarChart3 className="h-5 w-5 text-emerald-600" />
+              Wer hat wie viel bezahlt?
+            </h2>
 
-        <div className="mt-4">
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart
-              data={byPerson}
-              margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                vertical={false}
-                stroke="#f3f4f6"
-              />
-              <XAxis
-                dataKey="name"
-                tick={{ fontSize: 12, fill: "#6b7280" }}
-                tickLine={false}
-                axisLine={{ stroke: "#e5e7eb" }}
-                interval={0}
-              />
-              <YAxis
-                width={48}
-                tick={{ fontSize: 12, fill: "#9ca3af" }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => `${value} €`}
-              />
-              <Tooltip
-                cursor={{ fill: "#ecfdf5" }}
-                formatter={(value) => formatEuro(Number(value))}
-                contentStyle={{
-                  borderRadius: "0.75rem",
-                  border: "1px solid #f3f4f6",
-                  fontSize: "0.875rem",
-                }}
-              />
-              <Bar dataKey="value" fill={BAR_COLOR} radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </section>
+            <div className="mt-4">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart
+                  data={byPerson}
+                  margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#f3f4f6"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 12, fill: "#6b7280" }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e5e7eb" }}
+                    interval={0}
+                  />
+                  <YAxis
+                    width={48}
+                    tick={{ fontSize: 12, fill: "#9ca3af" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => `${value} €`}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "#ecfdf5" }}
+                    formatter={(value) => formatEuro(Number(value))}
+                    contentStyle={{
+                      borderRadius: "0.75rem",
+                      border: "1px solid #f3f4f6",
+                      fontSize: "0.875rem",
+                    }}
+                  />
+                  <Bar dataKey="value" fill={BAR_COLOR} radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

@@ -144,7 +144,20 @@ class ClassifyTest(unittest.TestCase):
     def test_eigene_eintraege_scholand(self) -> None:
         result = classify("Kartenzahlung Scholand Einzelhan Hamburg")
         self.assertTrue(result.is_food)
-        self.assertEqual(result.label, "Scholand")
+        self.assertEqual(result.label, "Rewe")
+
+    def test_rewe_franchise_yazici(self) -> None:
+        # So steht der Markt im Kontoauszug (Betreiber statt Kette)
+        for text in (
+            "Kartenzahlung YAZICI EINZELHANDELS OHG//Hamburg/DE",
+            "Yazici Einzelhandels oHG Hamburg",
+        ):
+            with self.subTest(text=text):
+                result = classify(text)
+                self.assertTrue(result.is_food)
+                self.assertEqual(result.label, "Rewe")
+        # Nur "Yazici" allein (z. B. ein anderes Geschaeft) trifft nicht
+        self.assertFalse(classify("Yazici Schneiderei").is_food)
 
     def test_drogerie_zaehlt_mit(self) -> None:
         self.assertTrue(classify("DM Drogerie Markt Filiale 123").is_food)
@@ -197,6 +210,15 @@ class MerchantListTest(unittest.TestCase):
         self.assertEqual(
             [(e.keyword, e.substring) for e in entries],
             [("REWE", False), ("FLEISCHEREI", True), ("E CENTER", False)],
+        )
+
+    def test_anzeigename_hinter_gleichheitszeichen(self) -> None:
+        entries = parse_merchant_lines(
+            ["YAZICI EINZELHANDELS = Rewe   # Franchise", "*BAECKEREI"]
+        )
+        self.assertEqual(
+            [(e.keyword, e.substring, e.display) for e in entries],
+            [("YAZICI EINZELHANDELS", False, "Rewe"), ("BAECKEREI", True, None)],
         )
 
     def test_mitgelieferte_datei_ist_sauber(self) -> None:

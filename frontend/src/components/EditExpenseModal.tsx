@@ -2,27 +2,21 @@ import { useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Check, Loader2 } from "lucide-react";
 import type { Expense, ExpenseUpdate } from "../api";
+import { parseAmount } from "../format";
 import { splitsFromRatio } from "../splitMath";
 import AdvancedSplitter from "./AdvancedSplitter";
+import CategorySelect from "./CategorySelect";
 import type { AdvancedSplitterHandle } from "./AdvancedSplitter";
 import CurrencySelect from "./CurrencySelect";
 import DatePicker from "./DatePicker";
 import Modal from "./Modal";
 
-// Vom Backend erlaubte Kategorien (siehe ollama_client.py) + Fallback.
-const CATEGORIES = [
-  "Lebensmittel",
-  "Kosmetik",
-  "Restaurant",
-  "Haushalt",
-  "Sonstiges",
-  "Unknown/Manuell",
-];
-
 interface EditExpenseModalProps {
   expense: Expense;
   /** Bekannte Teilnehmer der Liste (für den Advanced Splitter). */
   participants: string[];
+  /** Wählbare Kategorien der Liste (Standards + eigene). */
+  categories: string[];
   saving: boolean;
   errorMessage: string | null;
   onSave: (data: ExpenseUpdate) => void;
@@ -36,6 +30,7 @@ const labelClass = "mb-1 block text-sm font-medium text-gray-700";
 function EditExpenseModal({
   expense,
   participants,
+  categories,
   saving,
   errorMessage,
   onSave,
@@ -56,12 +51,6 @@ function EditExpenseModal({
     (expense.receipt_date ?? expense.created_at).slice(0, 10),
   );
   const [localError, setLocalError] = useState<string | null>(null);
-
-  // Falls die Kategorie des Eintrags nicht in der Standardliste steht,
-  // trotzdem als Option anbieten, damit sie nicht verloren geht.
-  const categoryOptions = CATEGORIES.includes(category)
-    ? CATEGORIES
-    : [category, ...CATEGORIES];
 
   // Stabile Teilnehmerbasis für die Startaufteilung: bekannte Personen der Liste
   // plus Original-Zahler und die in den gespeicherten splits genannten Namen.
@@ -100,22 +89,19 @@ function EditExpenseModal({
   }, [baseParticipants, payerName]);
 
   // Betrag als Zahl fürs Splitter-Ergebnis (0, solange leer/ungültig).
-  const parsedAmountValue = Number.parseFloat(amount.replace(",", "."));
-  const splitAmount =
-    Number.isFinite(parsedAmountValue) && parsedAmountValue > 0
-      ? parsedAmountValue
-      : 0;
+  const parsedAmountValue = parseAmount(amount);
+  const splitAmount = parsedAmountValue > 0 ? parsedAmountValue : 0;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
 
-    const parsedAmount = Number.parseFloat(amount.replace(",", "."));
+    const parsedAmount = parseAmount(amount);
     if (!title.trim() || !payerName.trim()) {
       setLocalError("Bitte Titel und Zahler angeben.");
       return;
     }
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      setLocalError("Bitte einen Betrag größer 0 angeben.");
+      setLocalError("Bitte einen Betrag größer als 0 angeben.");
       return;
     }
 
@@ -191,18 +177,12 @@ function EditExpenseModal({
               <label htmlFor="edit-category" className={labelClass}>
                 Kategorie
               </label>
-              <select
+              <CategorySelect
                 id="edit-category"
                 value={category}
-                onChange={(event) => setCategory(event.target.value)}
-                className={inputClass}
-              >
-                {categoryOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+                options={categories}
+                onChange={setCategory}
+              />
             </div>
           </div>
 
