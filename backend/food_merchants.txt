@@ -24,7 +24,7 @@
 # =============================================================================
 
 
-# ---- Eigene Ergänzungen (Kevin) ---------------------------------------------
+# ---- Eigene Ergänzungen (Max) ---------------------------------------------
 SCHOLAND = Rewe                 # Rewe-Markt (Scholand Einzelhandel)
 YAZICI EINZELHANDELS = Rewe     # Rewe-Markt (Yazici Einzelhandels oHG)
 

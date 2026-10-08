@@ -958,7 +958,7 @@ fortführen:
 > erst Ansatz klären, dann umsetzen, dann diese Datei fortschreiben.
 
 1. **OCR-Härtetest.** ✅ **Erledigt (2026-07-21).** End-to-End-Test des Scan-Pfads
-   mit einem echten Lidl-Bon (`test_bon.png`) gegen den laufenden Stack
+   mit einem echten Lidl-Bon (lokal, bewusst nicht im Repo) gegen den laufenden Stack
    (temporärer Container im `yousplit_default`-Netz → `POST /api/lists/{id}/receipts`).
    **Befund:** `title` (Lidl), `amount` (137.77) und `category` (Lebensmittel)
    wurden zuverlässig gelesen; das **`receipt_date` kam als `null`**, obwohl es
