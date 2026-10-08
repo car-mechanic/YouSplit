@@ -28,3 +28,10 @@ docker compose exec ollama ollama pull qwen2.5vl:3b
 ```
 
 Frontend: http://localhost:5173 · Backend/Docs: http://localhost:8000/docs
+
+## 🔀 Git-Workflow
+
+Nach jeder abgeschlossenen Änderung **immer ohne Rückfrage** committen und
+nach `origin/main` pushen (`git add -A && git commit && git push`).
+Commit-Nachrichten auf Deutsch, kurz und aussagekräftig. Vorher prüfen, dass
+keine Geheimnisse (`.env`, Tokens) im Commit landen.
