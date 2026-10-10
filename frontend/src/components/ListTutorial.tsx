@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { Check, Link2, Loader2 } from "lucide-react";
 import { payerStorageKey } from "../payerStorage";
+import { copyCurrentLink } from "../clipboard";
 import MembersEditor from "./MembersEditor";
 import Modal from "./Modal";
 
@@ -73,11 +74,8 @@ function ListTutorial({
     else setStep(steps[index + 1]);
   }
 
-  function copyLink() {
-    navigator.clipboard
-      ?.writeText(window.location.href)
-      .then(() => setCopied(true))
-      .catch(() => undefined);
+  async function copyLink() {
+    if (await copyCurrentLink()) setCopied(true);
   }
 
   const content: Record<Step, { title: string; body: ReactNode }> = {

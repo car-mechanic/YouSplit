@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Check, Link2, Users } from "lucide-react";
 import { formatEuro } from "../format";
+import { copyCurrentLink } from "../clipboard";
 
 interface ListHeaderProps {
   title: string;
@@ -26,15 +27,12 @@ function ListHeader({
 }: ListHeaderProps) {
   const [copied, setCopied] = useState(false);
 
-  function handleCopyLink() {
-    // clipboard fehlt ohne HTTPS (z. B. Handy im WLAN über http://192.168…)
-    navigator.clipboard
-      ?.writeText(window.location.href)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => undefined);
+  async function handleCopyLink() {
+    // copyCurrentLink klappt auch ohne HTTPS (z. B. über http://192.168…)
+    if (await copyCurrentLink()) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   }
 
   return (

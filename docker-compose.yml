@@ -41,5 +41,20 @@ services:
     depends_on:
       - backend
 
+  # Cloudflare-Tunnel: macht das Frontend ueber eine eigene Domain per HTTPS
+  # erreichbar, ohne Portfreigabe im Router. Laeuft nur mit Profil "tunnel"
+  # (auf dem Server in .env: COMPOSE_PROFILES=tunnel), damit er lokal beim
+  # Entwickeln nicht ohne Token in einer Neustart-Schleife haengt.
+  # Ziel im Cloudflare-Dashboard (Public Hostname): http://frontend:5173
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    depends_on:
+      - frontend
+
 volumes:
   postgres_data:

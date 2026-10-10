@@ -694,8 +694,11 @@ einem echten Handy getestet.
    Kontoauszug. Laut 3.5 nach Ressourcen aufteilen.
 4. **Server-Umzug (To-Do 4.7 #2):** ~~`API_BASE_URL`/CORS fest auf `localhost`~~
    erledigt 2026-10-10 (Vite-Proxy, relative `/api`, `allowedHosts: true`;
-   läuft auf Proxmox/Docker). Offen: „Link teilen“ nutzt `navigator.clipboard`,
-   das es nur unter HTTPS/localhost gibt; Postgres-Port 5432 ist noch nach außen
+   läuft auf Proxmox/Docker). „Link teilen“ kopiert über `src/clipboard.ts`
+   (Fallback `execCommand("copy")`, notfalls `prompt`) auch ohne HTTPS.
+   Cloudflare-Tunnel als Compose-Service `cloudflared` (Profil `tunnel`,
+   Token `CLOUDFLARE_TUNNEL_TOKEN` in der Server-`.env`, Ziel
+   `http://frontend:5173`). Offen: Postgres-Port 5432 ist noch nach außen
    veröffentlicht; Frontend läuft weiter als Vite-Dev-Server statt Prod-Build.
 5. **„Trotzdem hinzufügen“** (`confirm_duplicate_receipt`) legt die Ausgabe und
    löscht den Job in zwei Transaktionen: zwei gleichzeitige Aufrufe legen den
