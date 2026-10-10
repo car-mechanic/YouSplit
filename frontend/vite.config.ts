@@ -7,4 +7,17 @@ export default defineConfig({
   // tailwindcss() generiert die Tailwind-v4-Utilities aus `@import "tailwindcss"`.
   // Ohne dieses Plugin bleiben alle Utility-Klassen wirkungslos (ungestyltes UI).
   plugins: [react(), tailwindcss()],
+  server: {
+    // Zugriff ueber beliebige Hostnamen im Heimnetz erlauben
+    // (z. B. Servername statt IP-Adresse)
+    allowedHosts: true,
+    proxy: {
+      // API-Aufrufe serverseitig an den Backend-Container weiterreichen.
+      // "backend" ist der Service-Name aus docker-compose.yml.
+      '/api': {
+        target: 'http://backend:8000',
+        changeOrigin: true,
+      },
+    },
+  },
 })

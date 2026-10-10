@@ -1,4 +1,7 @@
-const API_BASE_URL = "http://localhost:8000/api";
+// Relativer Pfad: Der Vite-Dev-Server leitet /api an das Backend weiter
+// (siehe vite.config.ts). So funktioniert die App auch, wenn sie von einem
+// anderen Rechner aus (z. B. ueber die IP des Servers) aufgerufen wird.
+const API_BASE_URL = "/api";
 
 // Vom Backend (currency.py) unterstützte Währungen – speisen die Dropdowns.
 // Aufgeteilt in Haupt- und "Mehr…"-Block (Roadmap 3.0 #2): das Dropdown zeigt

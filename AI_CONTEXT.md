@@ -127,14 +127,18 @@ YouSplit/
 
 ```
 Browser (React/Vite :5173)
-      │  fetch → http://localhost:8000/api/...
+      │  fetch → /api/...  (relativ, gleiche Origin)
+      ▼
+Vite-Dev-Server-Proxy  ──►  http://backend:8000/api/...
       ▼
 FastAPI Backend (:8000)  ──SQLAlchemy──►  PostgreSQL (db:5432)
 ```
 
 - **Frontend → Backend:** Ausschließlich über `frontend/src/api.ts`. Kein
   direkter `fetch` in Komponenten — neue Endpunkte immer als Funktion in `api.ts`
-  kapseln, inkl. passender TS-Typen. Basis-URL ist `http://localhost:8000/api`.
+  kapseln, inkl. passender TS-Typen. Basis-URL ist relativ `/api`; der Vite-Proxy (`vite.config.ts`) reicht an
+  `http://backend:8000` weiter. Dadurch reicht für Zugriff aus dem Netz Port 5173,
+  CORS spielt im Normalbetrieb keine Rolle mehr (seit 2026-10-10).
 - **Backend → DB:** SQLAlchemy 2.0 (`Mapped`/`mapped_column`). Session-Zugriff
   **nur** über die `get_db()`-Dependency (`Depends(get_db)`), nie global.
   Tabellen werden aktuell beim App-Start via `Base.metadata.create_all` angelegt
@@ -688,9 +692,11 @@ einem echten Handy getestet.
    ein Default wie „in dieser Liste immer 70/30“ existiert nicht.
 3. **`routers/lists.py` (760 Zeilen)** bündelt Listen, Ausgaben, Bon-Scan und
    Kontoauszug. Laut 3.5 nach Ressourcen aufteilen.
-4. **Server-Umzug (To-Do 4.7 #2):** `API_BASE_URL` (`api.ts`) und CORS
-   (`main.py`) sind fest auf `localhost`; „Link teilen“ nutzt
-   `navigator.clipboard`, das es nur unter HTTPS/localhost gibt.
+4. **Server-Umzug (To-Do 4.7 #2):** ~~`API_BASE_URL`/CORS fest auf `localhost`~~
+   erledigt 2026-10-10 (Vite-Proxy, relative `/api`, `allowedHosts: true`;
+   läuft auf Proxmox/Docker). Offen: „Link teilen“ nutzt `navigator.clipboard`,
+   das es nur unter HTTPS/localhost gibt; Postgres-Port 5432 ist noch nach außen
+   veröffentlicht; Frontend läuft weiter als Vite-Dev-Server statt Prod-Build.
 5. **„Trotzdem hinzufügen“** (`confirm_duplicate_receipt`) legt die Ausgabe und
    löscht den Job in zwei Transaktionen: zwei gleichzeitige Aufrufe legen den
    Bon doppelt an (das UI sperrt den Button, die API nicht).
