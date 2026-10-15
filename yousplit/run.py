@@ -8,7 +8,9 @@ starten → beim Beenden PostgreSQL sauber herunterfahren.
 import json
 import logging
 import os
+import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -84,10 +86,16 @@ def main() -> None:
     os.environ["LOG_LEVEL"] = log_level
     os.environ.setdefault("DATABASE_URL", f"postgresql://{PG_USER}@127.0.0.1:5432/{PG_DB}")
 
+    # uvicorn loest SIGTERM nach dem eigenen Shutdown erneut aus. Ohne Handler
+    # toetet das Python sofort (unter tini, init: true), und der finally-Block
+    # mit stop_postgres() laeuft nie. SystemExit dagegen durchlaeuft finally.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
     start_postgres()
     try:
-        # uvicorn faengt SIGTERM ab und kehrt dann hierher zurueck
-        uvicorn.run("main:app", host="0.0.0.0", port=8099, log_level=log_level.lower())
+        # app_dir: "python /run.py" setzt sys.path auf "/", nicht auf /app
+        uvicorn.run("main:app", app_dir="/app", host="0.0.0.0", port=8099,
+                    log_level=log_level.lower())
     finally:
         stop_postgres()
 

@@ -35,3 +35,7 @@ Nach jeder abgeschlossenen Änderung **immer ohne Rückfrage** committen und
 nach `origin/main` pushen (`git add -A && git commit && git push`).
 Commit-Nachrichten auf Deutsch, kurz und aussagekräftig. Vorher prüfen, dass
 keine Geheimnisse (`.env`, Tokens) im Commit landen.
+
+## Lessons learned
+
+- uvicorn (≥ 0.29) löst SIGTERM nach dem Shutdown erneut aus. Unter tini (Add-on `init: true`) tötet das Python, bevor `finally` läuft. Deshalb setzt `yousplit/run.py` einen eigenen SIGTERM-Handler. Stopp-Tests immer mit `docker run --init`, sonst ist Python PID 1 und ignoriert das Signal.
