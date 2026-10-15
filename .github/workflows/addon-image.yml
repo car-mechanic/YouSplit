@@ -43,6 +43,8 @@ jobs:
           context: .
           file: Dockerfile.addon
           platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
           push: true
           tags: |
             ghcr.io/car-mechanic/yousplit-addon-${{ matrix.arch }}:${{ steps.ver.outputs.version }}

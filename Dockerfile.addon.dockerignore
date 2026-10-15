@@ -1,0 +1,12 @@
+# Gilt nur fuer Dockerfile.addon (Build-Kontext = Repo-Root). Die
+# .dockerignore-Dateien in backend/ und frontend/ greifen hier NICHT.
+.git
+.env
+.env.*
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+**/.venv
+backend/tests
+backend;C

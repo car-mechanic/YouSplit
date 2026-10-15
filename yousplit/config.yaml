@@ -6,7 +6,8 @@ url: https://github.com/car-mechanic/YouSplit
 arch:
   - amd64
   - aarch64
-init: false
+# init (tini) bleibt an: leitet SIGTERM an run.py weiter und raeumt Zombie-
+# Prozesse von Postgres ab (kein s6-Basis-Image)
 startup: application
 boot: auto
 # Fertiges Image aus der GitHub Action (.github/workflows/addon-image.yml)
@@ -18,8 +19,10 @@ ports:
 ports_description:
   8099/tcp: YouSplit Weboberflaeche
 webui: "http://[HOST]:[PORT:8099]"
-# /data (Datenbank) wird von Home Assistant gesichert
-map: []
+watchdog: "tcp://[HOST]:[PORT:8099]"
+# Postgres-Dateien in /data sind nur bei gestopptem Server konsistent:
+# Home Assistant haelt das Add-on fuer die Dauer des Backups an.
+backup: cold
 options:
   log_level: INFO
 schema:

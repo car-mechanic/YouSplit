@@ -22,43 +22,56 @@ PG_DB = "yousplit"
 logger = logging.getLogger("yousplit.addon")
 
 
-def pg(command: str, *args: str) -> subprocess.CompletedProcess[str]:
-    """Führt ein PostgreSQL-Programm als Benutzer ``postgres`` aus."""
-    return subprocess.run(
+def pg(command: str, *args: str, capture: bool = False) -> str:
+    """Führt ein PostgreSQL-Programm als Benutzer ``postgres`` aus.
+
+    Ohne ``capture`` landet die Ausgabe direkt im Add-on-Log. ``cwd=/tmp``, weil
+    der Benutzer ``postgres`` das Arbeitsverzeichnis /app nicht lesen darf.
+    """
+    result = subprocess.run(
         ["runuser", "-u", "postgres", "--", str(PG_BIN / command), *args],
         check=True,
-        capture_output=True,
+        cwd="/tmp",
+        capture_output=capture,
         text=True,
     )
+    return result.stdout if capture else ""
 
 
 def start_postgres() -> None:
-    PG_DATA.parent.mkdir(parents=True, exist_ok=True)
+    PG_DATA.mkdir(parents=True, exist_ok=True)
+    # Bei jedem Start: Nach einer Backup-Wiederherstellung koennen Besitzer oder
+    # Rechte abweichen, dann verweigert Postgres den Start.
+    subprocess.run(["chown", "-R", "postgres:postgres", str(PG_DATA)], check=True)
+    PG_DATA.chmod(0o700)
+
     if not (PG_DATA / "PG_VERSION").exists():
         logger.info("Initialisiere neue PostgreSQL-Datenbank in %s", PG_DATA)
-        PG_DATA.mkdir(exist_ok=True)
-        subprocess.run(["chown", "-R", "postgres:postgres", str(PG_DATA)], check=True)
-        PG_DATA.chmod(0o700)
         # trust-Login nur lokal: Postgres lauscht nur auf 127.0.0.1 im Container
         pg("initdb", "-D", str(PG_DATA), "-U", PG_USER, "-A", "trust",
            "--encoding=UTF8", "--locale=C.UTF-8")
 
-    pg("pg_ctl", "-D", str(PG_DATA), "-w", "-t", "60", "-l", "/tmp/postgres.log",
+    # Nach einem harten Stopp bleibt die Lock-Datei liegen. Im frischen Container
+    # kann ihre alte PID zufaellig einem anderen Prozess gehoeren — dann haelt
+    # Postgres die Datenbank faelschlich fuer belegt. /data gehoert exklusiv
+    # diesem Add-on, also laeuft hier sicher kein zweiter Server.
+    (PG_DATA / "postmaster.pid").unlink(missing_ok=True)
+
+    pg("pg_ctl", "-D", str(PG_DATA), "-w", "-t", "60",
        "-o", "-c listen_addresses=127.0.0.1", "start")
 
     exists = pg("psql", "-h", "127.0.0.1", "-U", PG_USER, "-d", "postgres", "-tAc",
-                f"SELECT 1 FROM pg_database WHERE datname='{PG_DB}'")
-    if exists.stdout.strip() != "1":
+                f"SELECT 1 FROM pg_database WHERE datname='{PG_DB}'", capture=True)
+    if exists.strip() != "1":
         pg("createdb", "-h", "127.0.0.1", "-U", PG_USER, PG_DB)
 
 
 def stop_postgres() -> None:
     logger.info("Fahre PostgreSQL herunter")
-    subprocess.run(
-        ["runuser", "-u", "postgres", "--", str(PG_BIN / "pg_ctl"),
-         "-D", str(PG_DATA), "-m", "fast", "-w", "stop"],
-        check=False,
-    )
+    try:
+        pg("pg_ctl", "-D", str(PG_DATA), "-m", "fast", "-w", "stop")
+    except subprocess.CalledProcessError:
+        logger.exception("PostgreSQL liess sich nicht sauber stoppen")
 
 
 def main() -> None:
@@ -73,7 +86,7 @@ def main() -> None:
 
     start_postgres()
     try:
-        # uvicorn fängt SIGTERM ab und kehrt dann hierher zurück
+        # uvicorn faengt SIGTERM ab und kehrt dann hierher zurueck
         uvicorn.run("main:app", host="0.0.0.0", port=8099, log_level=log_level.lower())
     finally:
         stop_postgres()

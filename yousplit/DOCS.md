@@ -11,7 +11,8 @@ Ausgaben erfassen, per Kontoauszug-Import aufnehmen und den Kassensturz berechne
 ## Daten
 
 Die Datenbank (PostgreSQL, läuft im Add-on) liegt in `/data/postgres` und ist Teil der
-Home-Assistant-Backups.
+Home-Assistant-Backups. Für ein konsistentes Backup hält Home Assistant das
+Add-on währenddessen kurz an (`backup: cold`).
 
 ## Teilen
 

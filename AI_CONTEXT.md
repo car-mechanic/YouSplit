@@ -1325,3 +1325,10 @@ Container statt Compose-Stack):
   Paket muss nach dem ersten Lauf auf „public“ gestellt werden.
 - **Nicht getestet** (Docker lief beim Anlegen nicht): `docker build -f Dockerfile.addon .`
   und ein Start mit `-e STATIC_DIR=/app/static -v data:/data` stehen noch aus.
+- **Review 2026-10-15:** `backup: cold` (Postgres-Dateien sind nur gestoppt
+  konsistent), `init` (tini) aktiv für Signal-Weiterleitung/Zombies, `watchdog`
+  per TCP, verwaiste `postmaster.pid` wird vor dem Start entfernt, `chown` von
+  `/data/postgres` bei jedem Start (Backup-Restore), Postgres-Ausgabe im
+  Add-on-Log statt in /tmp, eigene `Dockerfile.addon.dockerignore` (die
+  `.dockerignore` in backend/ und frontend/ greifen beim Root-Kontext nicht —
+  sonst landen Windows-`node_modules` im Build), Build-Cache in der Action.
