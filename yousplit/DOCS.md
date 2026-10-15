@@ -10,7 +10,7 @@ Ausgaben erfassen, per Kontoauszug-Import aufnehmen und den Kassensturz berechne
 
 ## Daten
 
-Die Datenbank (SQLite) liegt in `/data/yousplit.db` und ist Teil der
+Die Datenbank (PostgreSQL, läuft im Add-on) liegt in `/data/postgres` und ist Teil der
 Home-Assistant-Backups.
 
 ## Teilen

@@ -908,7 +908,7 @@ fortführen:
   außen nur das Ergebnis (`onExpenseAdded`).
 - **State auf einen geänderten Prop/Param spiegeln:** per **render-phase**
   `if (prev !== next) setState(...)`, nicht per Effekt (vermeidet die
-  `react-hooks/set-state-in-effect`-Regel). Datenladen bleibt im Effekt, setzt
+  `react-hooks/set-state-in-effect`-Regel). Datenladen bleibt im Effekt, 
   State aber nur in den Promise-Callbacks.
 - **Backend-Router dünn halten:** Endpoints validieren + orchestrieren; fachliche
   bzw. wiederholte Logik in Helfer/Module auslagern (z. B. `_ensure_image`,
@@ -968,7 +968,7 @@ fortführen:
    manuellen wie den Scan-Pfad. Prüfung greift nicht beim Bearbeiten.
 
 3. **Kassensturz für > 2 Personen.** ✅ **Erledigt (2026-07-20).**
-   Als testbarer Backend-Endpunkt `GET /api/lists/{id}/settlement` umgesetzt
+   Als testbarer Backend-Endpunkt `GET /api/lists/{id}/settlement` umge
    (`settlement.py`, Greedy-Debt-Simplification, ≤ n-1 Überweisungen). Das
    Frontend holt das Ergebnis und zeigt es in `SettlementCard.tsx` im
    `emerald`-Card-Design ("wer schuldet wem wie viel" + Salden je Person). Details
@@ -1308,13 +1308,15 @@ Container statt Compose-Stack):
 - `repository.yaml` (Repo-Root) + `yousplit/config.yaml` machen das Repo zum
   Add-on-Repository. Installation: HA → Add-on-Store → Repositories → Repo-URL.
 - `Dockerfile.addon` (Repo-Root): Stufe 1 baut das Frontend (`npm run build`),
-  Stufe 2 ist Python + Backend + `dist/` als `/app/static`.
+  Stufe 2 ist Python + PostgreSQL + Backend + `dist/` als `/app/static`.
 - `backend/main.py`: Ist `STATIC_DIR` gesetzt, liefert FastAPI das Frontend samt
   SPA-Fallback aus; `/api/*` bleibt die API. Ohne `STATIC_DIR` (Compose-Betrieb)
   unverändert.
-- `yousplit/run.py`: liest `/data/options.json` (`log_level`), setzt
-  `DATABASE_URL=sqlite:////data/yousplit.db` (kein Postgres im Add-on; `/data`
-  ist Teil der HA-Backups) und startet uvicorn auf Port 8099.
+- `yousplit/run.py`: liest `/data/options.json` (`log_level`), 
+  `DATABASE_URL=postgresql://yousplit@127.0.0.1:5432/yousplit`. PostgreSQL (Debian-Paket)
+  läuft im selben Container, Daten in `/data/postgres` (Teil der HA-Backups); run.py
+  initialisiert beim ersten Start, startet es und fährt es beim Beenden herunter.
+  Ein Major-Upgrade von Postgres (neues Basis-Image) erfordert dump/restore.
 - **Kein Ingress**, bewusst: Share-Links müssen ohne HA-Login funktionieren,
   daher direkter Port 8099.
 - `.github/workflows/addon-image.yml` baut Images (amd64/aarch64) nach
