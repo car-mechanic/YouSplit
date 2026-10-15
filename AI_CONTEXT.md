@@ -1297,3 +1297,29 @@ Cleanup und Split-Regler-UI `SplitRatioInput.tsx`). Frühere Stände: 2026-07-20
 Bearbeiten; Roadmap #4 – Ollama GPU/CPU-Override; Roadmap #5 – Refactoring &
 deutsche Kommentierung, ListView zerlegt) · Bitte bei relevanten Änderungen
 fortschreiben._
+
+---
+
+## Anhang B: Home-Assistant-Add-on (Branch `homeassistant-addon`, 2026-10-15)
+
+Die App lässt sich zusätzlich als **Home-Assistant-Add-on** betreiben (ein
+Container statt Compose-Stack):
+
+- `repository.yaml` (Repo-Root) + `yousplit/config.yaml` machen das Repo zum
+  Add-on-Repository. Installation: HA → Add-on-Store → Repositories → Repo-URL.
+- `Dockerfile.addon` (Repo-Root): Stufe 1 baut das Frontend (`npm run build`),
+  Stufe 2 ist Python + Backend + `dist/` als `/app/static`.
+- `backend/main.py`: Ist `STATIC_DIR` gesetzt, liefert FastAPI das Frontend samt
+  SPA-Fallback aus; `/api/*` bleibt die API. Ohne `STATIC_DIR` (Compose-Betrieb)
+  unverändert.
+- `yousplit/run.py`: liest `/data/options.json` (`log_level`), setzt
+  `DATABASE_URL=sqlite:////data/yousplit.db` (kein Postgres im Add-on; `/data`
+  ist Teil der HA-Backups) und startet uvicorn auf Port 8099.
+- **Kein Ingress**, bewusst: Share-Links müssen ohne HA-Login funktionieren,
+  daher direkter Port 8099.
+- `.github/workflows/addon-image.yml` baut Images (amd64/aarch64) nach
+  `ghcr.io/car-mechanic/yousplit-addon-{arch}`; HA zieht sie über `image:` in
+  der `config.yaml`. Beim Release `version` in `config.yaml` erhöhen. Das GHCR-
+  Paket muss nach dem ersten Lauf auf „public“ gestellt werden.
+- **Nicht getestet** (Docker lief beim Anlegen nicht): `docker build -f Dockerfile.addon .`
+  und ein Start mit `-e STATIC_DIR=/app/static -v data:/data` stehen noch aus.

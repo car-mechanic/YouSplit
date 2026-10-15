@@ -1,0 +1,26 @@
+name: YouSplit
+version: "1.0.0"
+slug: yousplit
+description: Gemeinsame Ausgaben aufteilen (Kassensturz) - lokal und privacy-first
+url: https://github.com/car-mechanic/YouSplit
+arch:
+  - amd64
+  - aarch64
+init: false
+startup: application
+boot: auto
+# Fertiges Image aus der GitHub Action (.github/workflows/addon-image.yml)
+image: ghcr.io/car-mechanic/yousplit-addon-{arch}
+# Kein Ingress: Der Share-Link der App muss ohne Home-Assistant-Login
+# funktionieren, daher direkter Port (z. B. hinter Cloudflare-Tunnel/Proxy).
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: YouSplit Weboberflaeche
+webui: "http://[HOST]:[PORT:8099]"
+# /data (Datenbank) wird von Home Assistant gesichert
+map: []
+options:
+  log_level: INFO
+schema:
+  log_level: list(DEBUG|INFO|WARNING|ERROR)

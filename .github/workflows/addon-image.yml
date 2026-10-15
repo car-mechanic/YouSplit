@@ -1,0 +1,49 @@
+name: Add-on-Image bauen
+
+on:
+  push:
+    branches: [homeassistant-addon, main]
+    paths:
+      - backend/**
+      - frontend/**
+      - Dockerfile.addon
+      - yousplit/**
+      - .github/workflows/addon-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: aarch64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Version aus config.yaml lesen
+        id: ver
+        run: echo "version=$(grep '^version:' yousplit/config.yaml | sed 's/.*"\(.*\)".*/\1/')" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.addon
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ghcr.io/car-mechanic/yousplit-addon-${{ matrix.arch }}:${{ steps.ver.outputs.version }}
+            ghcr.io/car-mechanic/yousplit-addon-${{ matrix.arch }}:latest
