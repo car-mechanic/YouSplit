@@ -1,95 +1,98 @@
 # YouSplit
 
-🇬🇧 **English version: [README.en.md](README.en.md)**
+🇩🇪 **Deutsche Version: [README.de.md](README.de.md)**
 
-Gemeinsame Ausgaben eintragen und auf einen Blick sehen, wer wem wie viel schuldet.
+Track shared expenses and see at a glance who owes whom how much.
 
-## Worum geht's?
+## What is it about?
 
-Die Idee hinter YouSplit ist ganz einfach: Man will **ohne viel Aufwand sehen,
-wer wie viel im Monat für Lebensmittel ausgibt** und **wie hoch die gemeinsamen
-Ausgaben sind**.
+The idea behind YouSplit is simple: you want to **see without much effort
+who spends how much on groceries each month** and **how high the shared
+expenses are**.
 
-Dafür braucht es kein Benutzerkonto und keine Cloud. Du legst eine Liste an,
-teilst den Link mit deinen Mitbewohnern oder deiner Familie, und alle tragen
-dort ihre Ausgaben ein. YouSplit rechnet aus, wer wem noch Geld schuldet.
+You don't need a user account or a cloud service. Create a list, share the
+link with your flatmates or family, and everyone adds their expenses there.
+YouSplit works out who still owes money to whom.
 
-## So geht's am einfachsten: einmal im Monat den Kontoauszug hochladen
+## The easiest way: upload your bank statement once a month
 
-Ausgaben einzeln abzutippen ist mühsam. Schneller geht es so:
+Typing in every expense by hand is tedious. This is faster:
 
-1. **Jede Person lädt einmal im Monat ihren Kontoauszug hoch** (als PDF aus dem
-   Online-Banking).
-2. **YouSplit erkennt die Lebensmitteleinkäufe automatisch** und hakt sie schon an.
-3. **Kurz drüberschauen:** Stimmt alles? Fehlt ein Einkauf, kannst du ihn
-   nachträglich anhaken. Gehört einer nicht dazu, nimmst du den Haken raus.
-4. Auswählen, wer bezahlt hat, und auf **„Buchungen anlegen“** klicken. Fertig.
-5. **Den Kontoauszug danach wieder löschen.** YouSplit speichert das PDF
-   sowieso nicht. Übernommen werden nur die angehakten Einkäufe mit Datum,
-   Betrag und Geschäft.
+1. **Each person uploads their bank statement once a month** (as a PDF from
+   online banking).
+2. **YouSplit detects grocery purchases automatically** and ticks them for you.
+3. **Take a quick look:** Is everything right? If a purchase is missing, tick
+   it. If one doesn't belong, untick it.
+4. Select who paid and click **"Buchungen anlegen"** (create bookings). Done.
+5. **Delete the bank statement afterwards.** YouSplit doesn't keep the PDF
+   anyway. Only the ticked purchases are saved, with date, amount and shop.
 
-**Warum das sicher ist:** YouSplit läuft auf deinem eigenen Gerät oder Server.
-Dein Kontoauszug wird dort ausgewertet und geht an niemanden sonst. Deine
-sensiblen Bankdaten landen also nicht bei irgendwelchen Drittanbietern.
+**Why this is safe:** YouSplit runs on your own device or server. Your bank
+statement is processed there and is never sent anywhere else. Your sensitive
+banking data does not end up with any third party.
 
-Gut zu wissen:
+Good to know:
 
-- Es funktionieren PDFs, in denen man den Text markieren kann, so wie sie
-  das Online-Banking liefert. Eingescannte Papier-Auszüge gehen nicht.
-- Der Import ist auf Kontoauszüge deutscher Banken ausgelegt.
-- Ausgaben, die schon in der Liste stehen, erkennt YouSplit und hakt sie
-  nicht doppelt an.
-- Drogerien wie dm oder Rossmann zählen als Lebensmittel, weil man dort
-  oft auch Essen kauft.
+- It works with PDFs where you can select the text, the way online banking
+  provides them. Scanned paper statements don't work.
+- The parser is built for German bank statement formats.
+- Expenses that are already in the list are recognized and not ticked twice.
+- Drugstores such as dm or Rossmann count as groceries, because people often
+  buy food there too.
 
-### Welche Geschäfte erkannt werden
+### Which shops are recognized
 
-Die Geschäfte stehen in der Datei
-[`backend/food_merchants.txt`](backend/food_merchants.txt). Ich habe sie von
-Hand zusammengestellt. Der Schwerpunkt liegt auf **bekannten Supermärkten,
-Discountern, Bäckern und Metzgern aus Deutschland und Europa**. Dazu kommen
-große Ketten aus anderen Ländern.
+The shops are listed in
+[`backend/food_merchants.txt`](backend/food_merchants.txt). I put this list
+together by hand. It focuses on **well-known supermarkets, discounters,
+bakeries and butchers from Germany and Europe**, plus large chains from other
+countries.
 
-Die Liste ist bestimmt nicht vollständig. Fehlt dein Markt, kannst du ihn
-einfach selbst eintragen. Wie das geht, steht oben in der Datei.
+The list is certainly not complete. If your shop is missing, you can simply
+add it yourself. The format is explained at the top of the file.
 
-## Was YouSplit kann
+## Features
 
-- Listen ohne Benutzerkonto, geteilt per Link
-- Ausgaben mit Zahler, Kategorie und Datum
-- Kontoauszug-Import für Lebensmitteleinkäufe
-- Kosten frei aufteilen: gleichmäßig, in Prozent, nach Beträgen oder Anteilen
-- Kassensturz: wer wem wie viel zahlen muss
-- Statistiken nach Kategorie und Person
-- Fremdwährungen, automatisch in Euro umgerechnet
+- Lists without user accounts, shared by link
+- Expenses with payer, category and date
+- Bank statement import for grocery purchases
+- Flexible cost splitting: equally, by percentage, by amount or by shares
+- Settle-up: who has to pay whom how much
+- Statistics by category and person
+- Foreign currencies, automatically converted to euros
 
-## Deine Daten
+## Your data
 
-**Alles, was du einträgst, bleibt auf dem Gerät, auf dem YouSplit läuft.**
-Es gibt keine Cloud, keine Werbung und keine Statistik-Dienste.
+**Everything you enter stays on the device that runs YouSplit.** There is no
+cloud, no advertising and no analytics.
 
-Nur bei Ausgaben in einer Fremdwährung fragt YouSplit den aktuellen
-Wechselkurs bei [Frankfurter](https://www.frankfurter.app) ab. Dabei wird nur
-die Währung übertragen (zum Beispiel „USD“), keine Beträge und keine Namen.
+Only for expenses in a foreign currency does YouSplit fetch the current
+exchange rate from [Frankfurter](https://www.frankfurter.app). Only the
+currency code is sent (for example "USD"), no amounts and no names.
 
-**Wichtig:** Wer den Link zu einer Liste hat, kann sie ansehen und bearbeiten.
-Gib den Link also nur an Leute, die mitrechnen sollen.
+**Important:** Anyone who has the link to a list can view and edit it. Only
+share the link with people who are supposed to take part.
 
 ## Installation
 
-### In Home Assistant (Add-on)
+### In Home Assistant (add-on)
 
-1. In Home Assistant: *Einstellungen → Add-ons → Add-on Store → ⋮ → Repositories*
-2. Diese Adresse hinzufügen: `https://github.com/car-mechanic/YouSplit`
-3. **YouSplit** installieren und starten
-4. Im Browser `http://<IP-von-Home-Assistant>:8099` öffnen
+1. In Home Assistant: *Settings → Add-ons → Add-on Store → ⋮ → Repositories*
+2. Add this address: `https://github.com/car-mechanic/YouSplit`
+3. Install and start **YouSplit**
+4. Click **"Open web UI"**. YouSplit opens inside Home Assistant.
+5. Optional: turn on **"Show in sidebar"** on the add-on page.
 
-Deine Daten sind automatisch in den Home-Assistant-Backups enthalten.
-Mehr dazu: [`yousplit/DOCS.md`](yousplit/DOCS.md)
+Share links need to work without a Home Assistant login. That is why port
+8099 stays reachable as well. Enter its public address as `public_url` in
+the add-on configuration, so "copy link" hands out that address.
 
-### Als einzelner Docker-Container (ohne Home Assistant)
+Your data is automatically included in Home Assistant backups.
+More details: [`yousplit/DOCS.md`](yousplit/DOCS.md) (German)
 
-Ein Container enthält alles: Datenbank und Oberfläche.
+### As a single Docker container (without Home Assistant)
+
+One container includes everything: database and user interface.
 
 ```bash
 docker run -d --init --name yousplit -p 8099:8099 \
@@ -97,36 +100,38 @@ docker run -d --init --name yousplit -p 8099:8099 \
   ghcr.io/car-mechanic/yousplit-addon-amd64
 ```
 
-- Auf einem Raspberry Pi 4 oder 5 statt `amd64` einfach `aarch64` nehmen.
-- Danach im Browser `http://<IP-des-Geräts>:8099` öffnen.
-- Deine Daten liegen im Docker-Volume `yousplit-data`.
-- `--init` bitte nicht weglassen. Sonst wird die Datenbank beim Stoppen nicht
-  sauber beendet.
+- On a Raspberry Pi 4 or 5, use `aarch64` instead of `amd64`.
+- Then open `http://<device-ip>:8099` in your browser.
+- Your data is stored in the Docker volume `yousplit-data`.
+- Please keep `--init`. Without it, the database is not shut down cleanly
+  when the container stops.
 
-Lieber selbst bauen? Das geht so:
+Prefer to build it yourself?
 
 ```bash
 docker build -f Dockerfile.addon -t yousplit .
 ```
 
-### Zum Entwickeln (Docker Compose)
+### For development (Docker Compose)
 
-Frontend, Backend und Datenbank laufen in getrennten Containern. Änderungen
-am Code sind sofort sichtbar.
+Frontend, backend and database run in separate containers. Code changes show
+up immediately.
 
 ```bash
 docker compose up --build
 ```
 
-- Oberfläche: http://localhost:5173
-- API-Dokumentation: http://localhost:8000/docs
+- User interface: http://localhost:5173
+- API documentation: http://localhost:8000/docs
 
-## Technik
+## Tech stack
 
 React + TypeScript (Vite, Tailwind) · FastAPI · PostgreSQL
 
-## Lizenz
+## License
 
-[GNU AGPL-3.0](LICENSE). Du darfst YouSplit frei nutzen, verändern und
-weitergeben. Wer eine veränderte Version als Online-Dienst anbietet, muss
-seinen geänderten Quellcode ebenfalls veröffentlichen.
+[GNU AGPL-3.0](LICENSE). You may use, modify and share YouSplit freely. If you
+offer a modified version as an online service, you must publish your modified
+source code as well.
+
+Note: the user interface is currently available in German only.
