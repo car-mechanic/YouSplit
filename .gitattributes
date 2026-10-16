@@ -1,1 +1,3 @@
 * text=auto
+# Shell-Skripte brauchen LF, sonst bricht sh unter Windows bei "set -e" ab
+*.sh text eol=lf
