@@ -1226,8 +1226,10 @@ fortführen:
    `YouSplit-alt` (privat, enthält die alten Hashes), `car-mechanic/YouSplit` ist
    neu, öffentlich und enthält nur den bereinigten `main`. Bewusst behalten: die
    eigenen Rewe-Franchise-Einträge (Scholand, Yazici) samt Tests.
-   **Noch offen (Nutzer, GitHub):** GHCR-Pakete dem neuen Repo zuordnen und
-   öffentlich stellen, Claude-Zugriffs-Token widerrufen, HA-Installation testen.
+   GHCR-Pakete am 2026-10-16 dem neuen Repo zugeordnet (Actions-Zugriff: Write),
+   erster Action-Lauf grün.
+   **Noch offen (Nutzer, GitHub):** GHCR-Pakete öffentlich stellen,
+   Claude-Zugriffs-Token widerrufen, HA-Installation testen.
    Ursprünglicher Text:
    Das Repo soll irgendwann **öffentlich** werden. Am 2026-10-08 wurde die
    Commit-Historie bereits auf die GitHub-No-Reply-Adresse umgeschrieben (alle
@@ -1340,7 +1342,10 @@ Container statt Compose-Stack):
   `docker run --init -p 8099:8099 -v data:/data`: Frontend + SPA-Fallback, `/api`
   (Liste anlegen/lesen, 404), sauberer Stopp (Exit 0, Postgres-Checkpoint) und
   Daten nach Neustart ohne Recovery. **Offen:** Installation in einer echten
-  HA-Instanz, aarch64-Image, erster Lauf der GitHub-Action.
+  HA-Instanz. Erster Lauf der GitHub-Action am 2026-10-16 grün. Stolperstein:
+  Die Pakete stammten aus dem alten Repo und waren mit `YouSplit-alt`
+  verknüpft, daher `denied: write_package`. Lösung: In den Package-Settings
+  unter „Manage Actions access“ das neue Repo mit Write eintragen.
 - **Review 2026-10-15:** `backup: cold` (Postgres-Dateien sind nur gestoppt
   konsistent), `init` (tini) aktiv für Signal-Weiterleitung/Zombies, `watchdog`
   per TCP, verwaiste `postmaster.pid` wird vor dem Start entfernt, `chown` von
