@@ -1228,8 +1228,9 @@ fortführen:
    eigenen Rewe-Franchise-Einträge (Scholand, Yazici) samt Tests.
    GHCR-Pakete am 2026-10-16 dem neuen Repo zugeordnet (Actions-Zugriff: Write),
    erster Action-Lauf grün.
-   **Noch offen (Nutzer, GitHub):** GHCR-Pakete öffentlich stellen,
-   Claude-Zugriffs-Token widerrufen, HA-Installation testen.
+   GHCR-Pakete öffentlich, Add-on 1.1.0 (Ingress) läuft in der echten
+   HA-Instanz (2026-10-16).
+   **Noch offen (Nutzer, GitHub):** Claude-Zugriffs-Token widerrufen.
    Ursprünglicher Text:
    Das Repo soll irgendwann **öffentlich** werden. Am 2026-10-08 wurde die
    Commit-Historie bereits auf die GitHub-No-Reply-Adresse umgeschrieben (alle
@@ -1349,8 +1350,8 @@ Container statt Compose-Stack):
 - **Lokal getestet (2026-10-16, amd64):** `docker build -f Dockerfile.addon .` und
   `docker run --init -p 8099:8099 -v data:/data`: Frontend + SPA-Fallback, `/api`
   (Liste anlegen/lesen, 404), sauberer Stopp (Exit 0, Postgres-Checkpoint) und
-  Daten nach Neustart ohne Recovery. **Offen:** Installation in einer echten
-  HA-Instanz. Erster Lauf der GitHub-Action am 2026-10-16 grün. Stolperstein:
+  Daten nach Neustart ohne Recovery. In einer echten HA-Instanz
+  installiert und getestet (1.1.0, Ingress + Sidebar, 2026-10-16). Erster Lauf der GitHub-Action am 2026-10-16 grün. Stolperstein:
   Die Pakete stammten aus dem alten Repo und waren mit `YouSplit-alt`
   verknüpft, daher `denied: write_package`. Lösung: In den Package-Settings
   unter „Manage Actions access“ das neue Repo mit Write eintragen.
