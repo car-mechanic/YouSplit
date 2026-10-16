@@ -1,33 +1,54 @@
 # CLAUDE.md
 
-> Diese Datei wird von Claude Code automatisch geladen. Sie hält sich bewusst
-> kurz und verweist auf die ausführliche Projektdokumentation.
+> Diese Datei wird von Claude Code automatisch geladen. Offene Aufgaben und
+> Tech-Debt stehen als Issues auf GitHub (`car-mechanic/YouSplit`). Die frühere
+> ausführliche Projektdoku `AI_CONTEXT.md` liegt nur noch in der Git-Historie.
 
-## 📖 Zuerst lesen: `AI_CONTEXT.md`
+## Projekt
 
-**Die maßgebliche Wissens- und Richtlinienquelle für dieses Projekt ist
-[`AI_CONTEXT.md`](./AI_CONTEXT.md).** Dort stehen:
+Gemeinsame Ausgaben je Liste erfassen (ohne Konto, Teilen per Link),
+Kontoauszug-Import für Lebensmittel, Kassensturz „wer zahlt wem wie viel“.
 
-- **Projekt-Übersicht & Tech-Stack** (React/TS-Frontend, FastAPI-Backend,
-  PostgreSQL, Docker Compose; Ollama/Kassenbon-Scan seit 2026-10-08 entfernt)
-- **Architektur-Richtlinien** (Zusammenspiel der Services, Datenmodell,
-  Endpunkte, Kassensturz-Logik; alter Scan-Ablauf nur noch als Referenz)
-- **Coding-Standards** (Clean Code, **deutsche Kommentare**, Modulstruktur)
-- **Aktueller Status & Roadmap** inkl. bekannter Tech-Debt
-
-Bitte `AI_CONTEXT.md` zu Beginn jeder Sitzung lesen und **nach relevanten
-Änderungen fortschreiben** (neue Endpunkte, geänderte Architektur, erledigte
-Roadmap-Punkte). Sie ist das dauerhafte Gedächtnis des Projekts.
+- **Frontend:** React + TypeScript (Vite, Tailwind, `lucide-react`), `frontend/`
+- **Backend:** FastAPI + SQLAlchemy 2.0 + Pydantic v2, `backend/`
+- **DB:** PostgreSQL. Schema per `create_all`, neue Spalten über
+  `database.ensure_schema_updates()` (kein Alembic).
+- **Betrieb:** Docker Compose (Entwicklung) oder Home-Assistant-Add-on
+  (`Dockerfile.addon`, `yousplit/`), ein Container mit Postgres, Backend und
+  Frontend-Build. Images baut `.github/workflows/addon-image.yml` nach GHCR.
 
 ## Schnellstart
 
 ```bash
 docker compose up --build
-# Einmalig nach der Ollama-Entfernung: verwaisten Container aufräumen
-docker compose up --build --remove-orphans
 ```
 
 Frontend: http://localhost:5173 · Backend/Docs: http://localhost:8000/docs
+
+Tests:
+
+```bash
+cd backend && python -m unittest discover -s tests
+cd frontend && npm test && npm run lint && npm run build
+```
+
+## Konventionen
+
+- **Kommentare und Docstrings auf Deutsch**, sie erklären das Warum.
+  Bezeichner bleiben englisch.
+- **Eine Wahrheit:** TS-Typen in `frontend/src/api.ts` spiegeln die
+  Pydantic-Schemas. Ändert sich ein Schema, beide Seiten anpassen.
+- **Netzwerkaufrufe nur über `api.ts`**, Fehler als `ApiError`, UI-Meldungen
+  über `withReason(…)`.
+- **Beträge mit `parseAmount` (`format.ts`) lesen**, nie mit `parseFloat`.
+- **Personen über `collectParticipants`**, Kategorien aus `categories.ts`.
+- **Router dünn halten:** Fachlogik in eigene Module (`settlement.py`,
+  `splits.py`, `bank_statement.py`, …).
+- **Logging** über `logging.getLogger("yousplit.<bereich>")`, kein `print`.
+- **Neue Logik bringt ihren Test mit** (Backend `unittest`, Frontend vitest
+  für reine Module).
+- **Neues Release des Add-ons:** `version` in `yousplit/config.yaml` erhöhen und
+  `yousplit/CHANGELOG.md` ergänzen. Ohne neue Version bietet HA kein Update an.
 
 ## 🔀 Git-Workflow
 
@@ -39,3 +60,7 @@ keine Geheimnisse (`.env`, Tokens) im Commit landen.
 ## Lessons learned
 
 - uvicorn (≥ 0.29) löst SIGTERM nach dem Shutdown erneut aus. Unter tini (Add-on `init: true`) tötet das Python, bevor `finally` läuft. Deshalb setzt `yousplit/run.py` einen eigenen SIGTERM-Handler. Stopp-Tests immer mit `docker run --init`, sonst ist Python PID 1 und ignoriert das Signal.
+- Das Frontend nutzt nur relative Pfade (Vite `base: './'`, `API_BASE_URL = "api"`, Router-`basename` aus `<base href>`). Grund: HA-Ingress liefert die App unter `/api/hassio_ingress/<token>/` aus. Ein neuer absoluter Pfad bricht den Ingress.
+- GHCR-Pakete gehören zu dem Repo, dessen Action sie angelegt hat. Nach einem Repo-Wechsel scheitert der Push mit `denied: write_package`, bis das neue Repo in den Package-Settings unter „Manage Actions access“ Write bekommt.
+- `requirements.txt` pinnt alle direkten Abhängigkeiten. Ein ungepinnter Neubau zog einmal SQLAlchemy 2.1, das `psycopg` (v3) statt `psycopg2` wählte. Seitdem setzt `database.py` `postgresql+psycopg2://` explizit.
+- Der Vite-Watcher im Compose-Container erkennt Änderungen über den Windows-Bind-Mount nicht zuverlässig. Dann `docker compose restart frontend`.

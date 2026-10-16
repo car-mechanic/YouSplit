@@ -2,7 +2,7 @@
 
 Bewusst **ohne** DB-/FastAPI-Bezug (nur ``pdfplumber`` fuer den PDF-Text), damit
 die Logik testbar bleibt und spaeter fuer die Komplettanalyse aller Buchungen
-wiederverwendbar ist (siehe AI_CONTEXT.md, Abschnitt 4.5 #5).
+wiederverwendbar ist (GitHub-Issue „Analyze full bank statements“).
 
 Ansatz — **generisch fuer mehrere deutsche Banken**, kein bankspezifisches
 Layout:

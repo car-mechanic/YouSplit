@@ -1,7 +1,7 @@
 """Personen einer Liste (2026-10-08).
 
-Eigenes Modul statt Anbau an ``routers/lists.py`` (das ist schon gross, siehe
-AI_CONTEXT.md 3.5). Die Personen legt das Tutorial einer neuen Liste fest; sie
+Eigenes Modul statt Anbau an ``routers/lists.py`` (das ist schon gross).
+Die Personen legt das Tutorial einer neuen Liste fest; sie
 lassen sich spaeter ueber den Kopf der Liste aendern.
 """
 

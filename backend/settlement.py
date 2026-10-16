@@ -1,8 +1,7 @@
 """Kassensturz für N Personen — reine Berechnungslogik.
 
 Bewusst ohne DB- oder FastAPI-Abhaengigkeit (nur die Pydantic-Antwort-Schemas),
-damit die Logik testbar bleibt und fuer spaetere Clients wiederverwendbar ist
-(siehe AI_CONTEXT.md, Abschnitt 2.5).
+damit die Logik testbar bleibt und fuer spaetere Clients wiederverwendbar ist.
 
 Aufteilungs-Konvention:
 - **Advanced Split (Roadmap 3.0 #3):** Traegt eine Ausgabe eine explizite

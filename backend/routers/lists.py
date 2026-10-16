@@ -53,7 +53,7 @@ def _find_duplicate(
     Wird ``title`` (das Geschaeft) uebergeben, muss auch dieses uebereinstimmen
     (unscharf, siehe ``duplicates.shops_match``). Ohne ``title`` (so aktuell bei
     jeder Eingabe) zaehlen nur Betrag und Datum. Der Titel-Vergleich ist fuer
-    ein spaeteres Scan-Konzept vorbereitet (siehe AI_CONTEXT.md, 4.7).
+    ein spaeteres Scan-Konzept vorbereitet.
 
     Als Datum eines bestehenden Eintrags gilt sein Ausgabedatum
     (``receipt_date``), falls vorhanden — sonst ersatzweise das Anlagedatum

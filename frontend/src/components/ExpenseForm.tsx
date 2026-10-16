@@ -55,7 +55,7 @@ interface ExpenseFormProps {
 
 /**
  * Formular zum Anlegen einer Ausgabe. „Kassenbon scannen“ ist vorübergehend
- * abgeschaltet (grauer Platzhalter, siehe AI_CONTEXT.md 2.16).
+ * abgeschaltet (grauer Platzhalter, seit Ollama entfernt ist).
  *
  * Kapselt das komplette "Ausgabe hinzufügen"-Feature: Eingabefelder, Datum
  * (DatePicker), Zahler-Dropdown mit "Neue Person" und Geräte-Erkennung
@@ -444,7 +444,7 @@ function ExpenseForm({
           </button>
 
           {/* Kassenbon-Scan ist vorübergehend abgeschaltet (kein Ollama mehr,
-              neues Konzept siehe AI_CONTEXT.md, Abschnitt 4.7). Der Button
+              ein neues Konzept steht noch aus). Der Button
               bleibt sichtbar, ist aber grau, durchgestrichen und ohne Funktion. */}
           <button
             type="button"
