@@ -1229,8 +1229,7 @@ fortführen:
    GHCR-Pakete am 2026-10-16 dem neuen Repo zugeordnet (Actions-Zugriff: Write),
    erster Action-Lauf grün.
    GHCR-Pakete öffentlich, Add-on 1.1.0 (Ingress) läuft in der echten
-   HA-Instanz (2026-10-16).
-   **Noch offen (Nutzer, GitHub):** Claude-Zugriffs-Token widerrufen.
+   HA-Instanz (2026-10-16). Claude-Zugriffs-Token gelöscht. Nichts mehr offen.
    Ursprünglicher Text:
    Das Repo soll irgendwann **öffentlich** werden. Am 2026-10-08 wurde die
    Commit-Historie bereits auf die GitHub-No-Reply-Adresse umgeschrieben (alle
