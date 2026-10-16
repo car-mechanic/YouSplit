@@ -50,7 +50,7 @@ YouSplit/
 ├─ docker-compose.yml          # Orchestriert die 3 Services (db, backend, frontend)
 ├─ .env                        # lokal, nicht im Git: COMPOSE_FILE
 ├─ AI_CONTEXT.md               # Diese Datei
-├─ README.md                   # Öffentliche Projektbeschreibung, Betriebsarten
+├─ README.md / README.en.md   # Öffentliche Beschreibung (DE / EN), Betriebsarten
 ├─ LICENSE                     # AGPL-3.0
 ├─ backend/
 │  ├─ Dockerfile
