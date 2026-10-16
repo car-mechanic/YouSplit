@@ -1323,8 +1323,11 @@ Container statt Compose-Stack):
   `ghcr.io/car-mechanic/yousplit-addon-{arch}`; HA zieht sie über `image:` in
   der `config.yaml`. Beim Release `version` in `config.yaml` erhöhen. Das GHCR-
   Paket muss nach dem ersten Lauf auf „public“ gestellt werden.
-- **Nicht getestet** (Docker lief beim Anlegen nicht): `docker build -f Dockerfile.addon .`
-  und ein Start mit `-e STATIC_DIR=/app/static -v data:/data` stehen noch aus.
+- **Lokal getestet (2026-10-16, amd64):** `docker build -f Dockerfile.addon .` und
+  `docker run --init -p 8099:8099 -v data:/data`: Frontend + SPA-Fallback, `/api`
+  (Liste anlegen/lesen, 404), sauberer Stopp (Exit 0, Postgres-Checkpoint) und
+  Daten nach Neustart ohne Recovery. **Offen:** Installation in einer echten
+  HA-Instanz, aarch64-Image, erster Lauf der GitHub-Action.
 - **Review 2026-10-15:** `backup: cold` (Postgres-Dateien sind nur gestoppt
   konsistent), `init` (tini) aktiv für Signal-Weiterleitung/Zombies, `watchdog`
   per TCP, verwaiste `postmaster.pid` wird vor dem Start entfernt, `chown` von
