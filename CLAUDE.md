@@ -4,18 +4,6 @@
 > Tech-Debt stehen als Issues auf GitHub (`car-mechanic/YouSplit`). Die frühere
 > ausführliche Projektdoku `AI_CONTEXT.md` liegt nur noch in der Git-Historie.
 
-## ⏳ Offene Übergabe (Stand 2026-10-16)
-
-Die 8 Issues aus `AI_CONTEXT.md` sind noch **nicht** auf GitHub angelegt.
-Texte und Skript liegen in `docs/issue-drafts/` (Englisch, Labels
-`tech-debt`, `security`, `bank-statement`). Ablauf:
-
-1. Prüfen, ob `gh` installiert und angemeldet ist (`gh auth status`). Sonst
-   den Nutzer bitten: `gh auth login --web -h github.com`.
-2. Prüfen, dass noch keine Issues existieren (`gh issue list -R car-mechanic/YouSplit`).
-3. `sh docs/issue-drafts/create.sh` ausführen.
-4. `docs/issue-drafts/` und diesen Abschnitt löschen, committen, pushen.
-
 ## Projekt
 
 Gemeinsame Ausgaben je Liste erfassen (ohne Konto, Teilen per Link),
