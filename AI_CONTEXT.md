@@ -1219,12 +1219,15 @@ fortführen:
    Server), **sofern möglich**. Zuerst Machbarkeit klären (z. B. P2P/lokale
    Verbindung vs. Server als Vermittler, Synchronisation, Datenschutz). Hängt mit 2.
    (Server) und 3. (Funktion) zusammen.
-5. **Sauberes Repo für die Veröffentlichung.** 🚧 **In Arbeit (2026-10-16).**
-   Erledigt: Historie geprüft (nur No-Reply-Autor, keine Secrets/`.env`),
-   README + LICENSE (AGPL-3.0), `promp.md` und `hero.png` gelöscht, Add-on-Branch
-   nach `main` gemergt. Weg: altes Repo auf GitHub in `YouSplit-alt` umbenennen
-   (bleibt privat), neues leeres öffentliches `YouSplit` anlegen, bereinigten
-   `main` pushen. So bleibt die URL gleich, alte Commit-Hashes sind nicht erreichbar.
+5. **Sauberes Repo für die Veröffentlichung.** ✅ **Veröffentlicht (2026-10-16).**
+   Historie geprüft (nur No-Reply-Autor, keine Secrets/`.env`), README (DE) +
+   README.en.md + LICENSE (AGPL-3.0), `promp.md` und `hero.png` gelöscht, Add-on-
+   Branch nach `main` gemergt (Branch gelöscht). Altes Repo heißt jetzt
+   `YouSplit-alt` (privat, enthält die alten Hashes), `car-mechanic/YouSplit` ist
+   neu, öffentlich und enthält nur den bereinigten `main`. Bewusst behalten: die
+   eigenen Rewe-Franchise-Einträge (Scholand, Yazici) samt Tests.
+   **Noch offen (Nutzer, GitHub):** GHCR-Pakete dem neuen Repo zuordnen und
+   öffentlich stellen, Claude-Zugriffs-Token widerrufen, HA-Installation testen.
    Ursprünglicher Text:
    Das Repo soll irgendwann **öffentlich** werden. Am 2026-10-08 wurde die
    Commit-Historie bereits auf die GitHub-No-Reply-Adresse umgeschrieben (alle
