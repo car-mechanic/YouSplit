@@ -1,3 +1,5 @@
+import { publicUrl, shareableUrl } from "./appBase";
+
 /**
  * Kopiert Text in die Zwischenablage – auch ohne HTTPS.
  *
@@ -45,11 +47,11 @@ function copyWithTextarea(text: string): boolean {
 }
 
 /**
- * Kopiert den Link der aktuellen Seite. Klappt das gar nicht, wird der Link
+ * Kopiert den teilbaren Link der aktuellen Seite. Klappt das gar nicht, wird der Link
  * in einem Eingabedialog angezeigt, damit man ihn von Hand kopieren kann.
  */
 export async function copyCurrentLink(): Promise<boolean> {
-  const url = window.location.href;
+  const url = shareableUrl(window.location.href, document.baseURI, publicUrl());
   const ok = await copyText(url);
   if (!ok) window.prompt("Link zum Kopieren:", url);
   return ok;

@@ -84,6 +84,7 @@ def main() -> None:
 
     log_level = options.get("log_level", "INFO")
     os.environ["LOG_LEVEL"] = log_level
+    os.environ["PUBLIC_URL"] = options.get("public_url", "")
     os.environ.setdefault("DATABASE_URL", f"postgresql://{PG_USER}@127.0.0.1:5432/{PG_DB}")
 
     # uvicorn loest SIGTERM nach dem eigenen Shutdown erneut aus. Ohne Handler

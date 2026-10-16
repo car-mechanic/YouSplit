@@ -1324,16 +1324,24 @@ Container statt Compose-Stack):
   Add-on-Repository. Installation: HA → Add-on-Store → Repositories → Repo-URL.
 - `Dockerfile.addon` (Repo-Root): Stufe 1 baut das Frontend (`npm run build`),
   Stufe 2 ist Python + PostgreSQL + Backend + `dist/` als `/app/static`.
-- `backend/main.py`: Ist `STATIC_DIR` gesetzt, liefert FastAPI das Frontend samt
-  SPA-Fallback aus; `/api/*` bleibt die API. Ohne `STATIC_DIR` (Compose-Betrieb)
-  unverändert.
-- `yousplit/run.py`: liest `/data/options.json` (`log_level`), 
+- `backend/frontend_static.py` (über `main.py`): Ist `STATIC_DIR` gesetzt,
+  liefert FastAPI das Frontend samt SPA-Fallback aus; `/api/*` bleibt die API.
+  Ohne `STATIC_DIR` (Compose-Betrieb) unverändert. Die index.html bekommt pro
+  Request ein `<base href>` (Ingress-Präfix aus `X-Ingress-Path`, nur im
+  Supervisor-Format, sonst `/`) und die `public_url` als Meta-Tag.
+- `yousplit/run.py`: liest `/data/options.json` (`log_level`, `public_url` →
+  Umgebungsvariable `PUBLIC_URL`), 
   `DATABASE_URL=postgresql://yousplit@127.0.0.1:5432/yousplit`. PostgreSQL (Debian-Paket)
   läuft im selben Container, Daten in `/data/postgres` (Teil der HA-Backups); run.py
   initialisiert beim ersten Start, startet es und fährt es beim Beenden herunter.
   Ein Major-Upgrade von Postgres (neues Basis-Image) erfordert dump/restore.
-- **Kein Ingress**, bewusst: Share-Links müssen ohne HA-Login funktionieren,
-  daher direkter Port 8099.
+- **Ingress + direkter Port 8099 (seit 1.1.0, 2026-10-16):** Ingress bindet die
+  Oberfläche in HA ein (Sidebar-Schalter, `panel_icon`/`panel_title`). Share-
+  Links müssen ohne HA-Login funktionieren, deshalb bleibt Port 8099 offen.
+  „Link kopieren“ tauscht das Ingress-Präfix gegen die `public_url`
+  (`frontend/src/appBase.ts`). Das Frontend nutzt nur noch relative Pfade
+  (Vite `base: './'`, `API_BASE_URL = "api"`, Router-`basename` aus dem
+  `<base href>`). Neue absolute Pfade im Frontend brechen den Ingress.
 - `.github/workflows/addon-image.yml` baut Images (amd64/aarch64) nach
   `ghcr.io/car-mechanic/yousplit-addon-{arch}`; HA zieht sie über `image:` in
   der `config.yaml`. Beim Release `version` in `config.yaml` erhöhen. Das GHCR-

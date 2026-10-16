@@ -1,5 +1,5 @@
 name: YouSplit
-version: "1.0.0"
+version: "1.1.0"
 slug: yousplit
 description: Gemeinsame Ausgaben aufteilen (Kassensturz) - lokal und privacy-first
 url: https://github.com/car-mechanic/YouSplit
@@ -12,13 +12,17 @@ startup: application
 boot: auto
 # Fertiges Image aus der GitHub Action (.github/workflows/addon-image.yml)
 image: ghcr.io/car-mechanic/yousplit-addon-{arch}
-# Kein Ingress: Der Share-Link der App muss ohne Home-Assistant-Login
-# funktionieren, daher direkter Port (z. B. hinter Cloudflare-Tunnel/Proxy).
+# Ingress: Oberflaeche in Home Assistant samt Sidebar-Schalter. Der direkte
+# Port bleibt zusaetzlich offen: Share-Links muessen ohne HA-Login
+# funktionieren (z. B. hinter Cloudflare-Tunnel/Proxy, siehe public_url).
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:cash-multiple
+panel_title: YouSplit
 ports:
   8099/tcp: 8099
 ports_description:
-  8099/tcp: YouSplit Weboberflaeche
-webui: "http://[HOST]:[PORT:8099]"
+  8099/tcp: YouSplit Weboberflaeche (Share-Links)
 watchdog: "tcp://[HOST]:[PORT:8099]"
 # Postgres-Dateien in /data sind nur bei gestopptem Server konsistent:
 # Home Assistant haelt das Add-on fuer die Dauer des Backups an.
@@ -27,3 +31,4 @@ options:
   log_level: INFO
 schema:
   log_level: list(DEBUG|INFO|WARNING|ERROR)
+  public_url: url?

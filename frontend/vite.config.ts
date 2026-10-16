@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative Asset-Pfade: lösen gegen das <base href> auf (HA-Ingress-Präfix)
+  base: './',
   // tailwindcss() generiert die Tailwind-v4-Utilities aus `@import "tailwindcss"`.
   // Ohne dieses Plugin bleiben alle Utility-Klassen wirkungslos (ungestyltes UI).
   plugins: [react(), tailwindcss()],
