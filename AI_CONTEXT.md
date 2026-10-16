@@ -50,7 +50,8 @@ YouSplit/
 ├─ docker-compose.yml          # Orchestriert die 3 Services (db, backend, frontend)
 ├─ .env                        # lokal, nicht im Git: COMPOSE_FILE
 ├─ AI_CONTEXT.md               # Diese Datei
-├─ promp.md                    # Ursprüngliche Projekt-Spezifikation/Notizen
+├─ README.md                   # Öffentliche Projektbeschreibung, Betriebsarten
+├─ LICENSE                     # AGPL-3.0
 ├─ backend/
 │  ├─ Dockerfile
 │  ├─ requirements.txt
@@ -1218,7 +1219,13 @@ fortführen:
    Server), **sofern möglich**. Zuerst Machbarkeit klären (z. B. P2P/lokale
    Verbindung vs. Server als Vermittler, Synchronisation, Datenschutz). Hängt mit 2.
    (Server) und 3. (Funktion) zusammen.
-5. **Sauberes Repo für die Veröffentlichung.** 📌 **Vorgemerkt, Zukunft (nicht jetzt).**
+5. **Sauberes Repo für die Veröffentlichung.** 🚧 **In Arbeit (2026-10-16).**
+   Erledigt: Historie geprüft (nur No-Reply-Autor, keine Secrets/`.env`),
+   README + LICENSE (AGPL-3.0), `promp.md` und `hero.png` gelöscht, Add-on-Branch
+   nach `main` gemergt. Weg: altes Repo auf GitHub in `YouSplit-alt` umbenennen
+   (bleibt privat), neues leeres öffentliches `YouSplit` anlegen, bereinigten
+   `main` pushen. So bleibt die URL gleich, alte Commit-Hashes sind nicht erreichbar.
+   Ursprünglicher Text:
    Das Repo soll irgendwann **öffentlich** werden. Am 2026-10-08 wurde die
    Commit-Historie bereits auf die GitHub-No-Reply-Adresse umgeschrieben (alle
    Commits `car-mechanic <193820155+car-mechanic@users.noreply.github.com>`, per
@@ -1300,7 +1307,10 @@ fortschreiben._
 
 ---
 
-## Anhang B: Home-Assistant-Add-on (Branch `homeassistant-addon`, 2026-10-15)
+## Anhang B: Home-Assistant-Add-on (seit 2026-10-16 in `main`, angelegt 2026-10-15)
+
+Dasselbe Image läuft auch ohne Home Assistant als einzelner Container
+(`docker run --init -p 8099:8099 -v yousplit-data:/data …`, siehe README).
 
 Die App lässt sich zusätzlich als **Home-Assistant-Add-on** betreiben (ein
 Container statt Compose-Stack):
