@@ -1,6 +1,9 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Check, Link2, Loader2 } from "lucide-react";
+import type { MembersValue } from "../api";
+import { linkedName, linkSelf, sameMembers } from "../haMembers";
+import { useMe } from "../haSession";
 import { payerStorageKey } from "../payerStorage";
 import { copyCurrentLink } from "../clipboard";
 import MembersEditor from "./MembersEditor";
@@ -8,9 +11,9 @@ import Modal from "./Modal";
 
 interface ListTutorialProps {
   listId: string;
-  initialMembers: string[];
+  initialMembers: MembersValue;
   /** Speichert die Personen im Backend; wirft bei Fehlern. */
-  onSaveMembers: (members: string[]) => Promise<void>;
+  onSaveMembers: (value: MembersValue) => Promise<void>;
   onClose: () => void;
 }
 
@@ -22,7 +25,8 @@ type Step = "members" | "me" | "expenses" | "settlement" | "share";
  * Wichtigster Schritt ist der erste: die Personen der Liste. Ohne sie würde die
  * erste Ausgabe zu 100 % beim Zahler landen, die zweite 50/50 – und frühere
  * Ausgaben müsste man von Hand nachteilen. Danach: wer man selbst ist (wird auf
- * diesem Gerät als Zahler vorgeschlagen) und drei kurze Hinweise.
+ * diesem Gerät als Zahler vorgeschlagen, über Home Assistant mit dem eigenen
+ * Konto verknüpft) und drei kurze Hinweise.
  */
 function ListTutorial({
   listId,
@@ -30,7 +34,10 @@ function ListTutorial({
   onSaveMembers,
   onClose,
 }: ListTutorialProps) {
+  const user = useMe();
   const [members, setMembers] = useState(initialMembers);
+  // Zuletzt gespeicherter Stand: nur bei Änderungen erneut speichern
+  const [saved, setSaved] = useState(initialMembers);
   const [me, setMe] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("members");
   const [saving, setSaving] = useState(false);
@@ -39,33 +46,47 @@ function ListTutorial({
 
   // "Wer bist du?" nur, wenn es Personen zur Auswahl gibt
   const steps: Step[] =
-    members.length > 0
+    members.members.length > 0
       ? ["members", "me", "expenses", "settlement", "share"]
       : ["members", "expenses", "settlement", "share"];
   const index = steps.indexOf(step);
   const isLast = index === steps.length - 1;
+  const myName = me ?? linkedName(members.memberUsers, user?.id);
 
-  async function next() {
-    // Nur speichern, wenn sich etwas geändert hat: wer über einen Link
-    // dazukommt, übernimmt meist nur die schon eingetragenen Namen.
-    const changed = members.join("\n") !== initialMembers.join("\n");
-    if (step === "members" && changed) {
-      setSaving(true);
-      setError(null);
-      try {
-        await onSaveMembers(members);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Speichern fehlgeschlagen.",
-        );
-        setSaving(false);
-        return;
-      }
+  /** Speichert `value`, falls geändert. false bei Fehler (Meldung steht dann). */
+  async function persist(value: MembersValue): Promise<boolean> {
+    // Wer über einen Link dazukommt, übernimmt meist nur die schon
+    // eingetragenen Namen: dann gibt es nichts zu speichern.
+    if (sameMembers(value, saved)) return true;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSaveMembers(value);
+      setSaved(value);
+      return true;
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Speichern fehlgeschlagen.",
+      );
+      return false;
+    } finally {
       setSaving(false);
     }
-    if (step === "me" && me) {
+  }
+
+  function pickMe(name: string) {
+    setMe(name);
+    // Über Home Assistant: die Person gleich mit dem eigenen Konto verknüpfen
+    if (user) setMembers((value) => linkSelf(value, name, user.id));
+  }
+
+  async function next() {
+    if ((step === "members" || step === "me") && !(await persist(members))) {
+      return;
+    }
+    if (step === "me" && myName) {
       try {
-        localStorage.setItem(payerStorageKey(listId), me);
+        localStorage.setItem(payerStorageKey(listId), myName);
       } catch {
         // Speicher nicht verfügbar (privater Modus): nur kein Vorschlag
       }
@@ -84,9 +105,11 @@ function ListTutorial({
       body: (
         <>
           <p className="mb-3 text-sm text-gray-600">
-            {initialMembers.length > 0
+            {initialMembers.members.length > 0
               ? "Diese Personen sind schon in der Liste. Fehlt jemand? Dann trag ihn hier ein."
               : "Trag alle Personen ein, die sich die Kosten teilen. Dann wird schon die erste Ausgabe auf alle aufgeteilt."}
+            {user &&
+              " Home-Assistant-Benutzer sehen die Liste dann automatisch auf all ihren Geräten."}
           </p>
           <MembersEditor value={members} onChange={setMembers} autoFocus />
         </>
@@ -97,26 +120,34 @@ function ListTutorial({
       body: (
         <>
           <p className="mb-3 text-sm text-gray-600">
-            Tipp auf deinen Namen. Auf diesem Gerät schlagen wir dich dann als
-            Zahler vor. Nicht dabei? Geh zurück und trag dich ein.
+            {user
+              ? "Tipp auf deinen Namen. Er wird mit deinem Home-Assistant-Konto verknüpft: Du siehst die Liste auf all deinen Geräten und wirst als Zahler vorgeschlagen."
+              : "Tipp auf deinen Namen. Auf diesem Gerät schlagen wir dich dann als Zahler vor."}{" "}
+            Nicht dabei? Geh zurück und trag dich ein.
           </p>
           <div className="flex flex-wrap gap-2">
-            {members.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setMe(name)}
-                aria-pressed={me === name}
-                className={`flex items-center gap-1 rounded-full border px-4 py-2 text-sm font-medium transition ${
-                  me === name
-                    ? "border-emerald-600 bg-emerald-600 text-white"
-                    : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {me === name && <Check className="h-4 w-4" />}
-                {name}
-              </button>
-            ))}
+            {members.members.map((name) => {
+              const owner = members.memberUsers[name];
+              // Mit einem anderen HA-Benutzer verknüpft: das ist jemand anderes
+              const taken = !!user && owner !== undefined && owner !== user.id;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => pickMe(name)}
+                  disabled={taken}
+                  aria-pressed={myName === name}
+                  className={`flex items-center gap-1 rounded-full border px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                    myName === name
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {myName === name && <Check className="h-4 w-4" />}
+                  {name}
+                </button>
+              );
+            })}
           </div>
         </>
       ),

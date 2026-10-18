@@ -18,7 +18,7 @@ setup_logging()
 import models  # noqa: E402,F401 — registriert die Tabellen bei Base.metadata
 from database import Base, engine, ensure_schema_updates  # noqa: E402
 from frontend_static import register_frontend  # noqa: E402
-from routers import lists, members  # noqa: E402
+from routers import lists, me, members  # noqa: E402
 
 logger = logging.getLogger("yousplit.main")
 
@@ -64,6 +64,7 @@ async def log_request_validation_error(
 
 app.include_router(lists.router, prefix="/api")
 app.include_router(members.router, prefix="/api")
+app.include_router(me.router, prefix="/api")
 
 
 # Home-Assistant-Add-on: Das gebaute Frontend wird vom Backend mit ausgeliefert

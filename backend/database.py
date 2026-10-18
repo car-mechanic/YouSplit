@@ -54,3 +54,6 @@ def ensure_schema_updates() -> None:
         connection.execute(
             text("ALTER TABLE shared_lists ADD COLUMN IF NOT EXISTS members JSON")
         )
+        connection.execute(
+            text("ALTER TABLE shared_lists ADD COLUMN IF NOT EXISTS member_users JSON")
+        )

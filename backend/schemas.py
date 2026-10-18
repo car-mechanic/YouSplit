@@ -11,6 +11,7 @@ from pydantic import (
 )
 
 from currency import SUPPORTED_CURRENCIES
+from ha_identity import MAX_USER_ID_LENGTH
 
 # Toleranz beim Abgleich "Summe der splits == amount" (Advanced Split). Pro
 # Teilnehmer kann durch die 1-Cent-Rundung minimal etwas abweichen; wir erlauben
@@ -205,14 +206,35 @@ class SharedListCreate(BaseModel):
 
 
 class MembersUpdate(BaseModel):
-    """Request-Body von ``PUT /lists/{id}/members``: die Personen der Liste."""
+    """Request-Body von ``PUT /lists/{id}/members``: die Personen der Liste.
+
+    ``member_users`` verknuepft Personen mit Home-Assistant-Benutzern
+    ({Name: Benutzer-ID}). Ein Benutzer ist hoechstens eine Person der Liste,
+    sonst waere „Wer bin ich?“ mehrdeutig.
+    """
 
     members: list[str] = Field(max_length=MAX_MEMBERS)
+    member_users: dict[str, str] = {}
 
     @field_validator("members")
     @classmethod
     def normalize(cls, value: list[str]) -> list[str]:
         return _normalize_members(value)
+
+    @model_validator(mode="after")
+    def check_member_users(self) -> "MembersUpdate":
+        links: dict[str, str] = {}
+        for raw_name, raw_user_id in self.member_users.items():
+            name, user_id = raw_name.strip(), raw_user_id.strip()
+            if name not in self.members:
+                raise ValueError(f"'{name}' ist keine Person der Liste")
+            if not user_id or len(user_id) > MAX_USER_ID_LENGTH:
+                raise ValueError(f"Ungültige Benutzer-ID für '{name}'")
+            if user_id in links.values():
+                raise ValueError("Ein Benutzer ist mehreren Personen zugeordnet")
+            links[name] = user_id
+        self.member_users = links
+        return self
 
 
 class SharedListResponse(BaseModel):
@@ -225,12 +247,55 @@ class SharedListResponse(BaseModel):
     created_at: datetime
     # Feste Personen der Liste (leer bei Altlisten ohne Tutorial)
     members: list[str] = []
+    # Person → Home-Assistant-Benutzer-ID (siehe MembersUpdate)
+    member_users: dict[str, str] = {}
     expenses: list[ExpenseResponse] = []
 
     @field_validator("members", mode="before")
     @classmethod
     def none_as_empty(cls, value: object) -> object:
         return [] if value is None else value
+
+    @field_validator("member_users", mode="before")
+    @classmethod
+    def none_as_empty_dict(cls, value: object) -> object:
+        return {} if value is None else value
+
+
+# ---------- Home-Assistant-Benutzer ----------
+
+class CurrentUser(BaseModel):
+    """Der über Ingress angemeldete Home-Assistant-Benutzer."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    display_name: str
+
+
+class HaUserOption(BaseModel):
+    """Ein auswählbarer Home-Assistant-Benutzer (Personen-Auswahl)."""
+
+    id: str
+    name: str
+
+
+class MyList(BaseModel):
+    """Eine Liste in „Meine Listen“ (Startseite, geräteübergreifend)."""
+
+    id: uuid.UUID
+    title: str
+    # Letzter Besuch dieses Benutzers; None = nur als Person verknüpft
+    last_visit: datetime | None
+    # Der Benutzer ist als Person der Liste verknüpft (dann nicht entfernbar)
+    is_member: bool
+
+
+class BookmarkImport(BaseModel):
+    """Übernahme der lokal gemerkten Listen eines Geräts in „Meine Listen“."""
+
+    list_ids: list[uuid.UUID] = Field(max_length=100)
 
 
 # ---------- Kassensturz / Settlement (N Personen) ----------

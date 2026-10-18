@@ -1,5 +1,5 @@
 name: YouSplit
-version: "1.1.0"
+version: "1.2.0"
 slug: yousplit
 description: Gemeinsame Ausgaben aufteilen (Kassensturz) - lokal und privacy-first
 url: https://github.com/car-mechanic/YouSplit
@@ -19,6 +19,11 @@ ingress: true
 ingress_port: 8099
 panel_icon: mdi:cash-multiple
 panel_title: YouSplit
+# Alle HA-Benutzer sehen YouSplit in der Seitenleiste, nicht nur Admins: Listen
+# werden mit HA-Benutzern geteilt.
+panel_admin: false
+# Benutzerliste fuer die Personen-Auswahl (Websocket config/auth/list, ha_users.py)
+homeassistant_api: true
 ports:
   8099/tcp: 8099
 ports_description:

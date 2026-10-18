@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import type { MembersValue } from "../api";
 import Modal from "./Modal";
 import MembersEditor from "./MembersEditor";
 
 interface MembersDialogProps {
-  initial: string[];
-  onSave: (members: string[]) => Promise<void>;
+  initial: MembersValue;
+  onSave: (value: MembersValue) => Promise<void>;
   onClose: () => void;
 }
 

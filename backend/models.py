@@ -27,6 +27,13 @@ class SharedList(Base):
     members: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True, default=None
     )
+    # Verknuepfung Person → Home-Assistant-Benutzer-ID ({Name: ID}, 2026-10-18).
+    # Verknuepfte Benutzer sehen die Liste auf allen Geraeten unter „Meine
+    # Listen“; ihr Name ist dort der vorgeschlagene Zahler. Personen bleiben
+    # Namen, weil Ausgaben (payer_name, splits) auf Namen verweisen.
+    member_users: Mapped[dict[str, str] | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
 
     expenses: Mapped[list["Expense"]] = relationship(
         back_populates="shared_list", cascade="all, delete-orphan"
@@ -109,3 +116,21 @@ class CategoryRule(Base):
     shared_list: Mapped["SharedList"] = relationship(
         back_populates="category_rules"
     )
+
+
+class ListBookmark(Base):
+    """Eine Liste in „Meine Listen“ eines Home-Assistant-Benutzers (2026-10-18).
+
+    Ersetzt fuer HA-Benutzer die Merkliste im localStorage: die kannte nur das
+    eigene Geraet, deshalb fehlten am PC die Listen vom Handy. Angelegt beim
+    Oeffnen einer Liste ueber Ingress. Listen, in denen der Benutzer als Person
+    verknuepft ist (``SharedList.member_users``), erscheinen auch ohne Eintrag.
+    """
+
+    __tablename__ = "list_bookmarks"
+
+    user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    list_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("shared_lists.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_visit: Mapped[datetime] = mapped_column(DateTime(timezone=True))

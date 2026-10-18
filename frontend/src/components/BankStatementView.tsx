@@ -15,7 +15,7 @@ import { importBankStatement, parseBankStatement } from "../api";
 import type { BankStatementPreview, BankTransaction, Expense } from "../api";
 import { formatDate, formatEuro } from "../format";
 import { collectParticipants } from "../participants";
-import { payerStorageKey } from "../payerStorage";
+import { initialPayer, payerStorageKey } from "../payerStorage";
 
 // Sentinel-Wert des Dropdowns für "Neue Person hinzufügen …"
 const NEW_PAYER = "__new__";
@@ -33,6 +33,8 @@ interface BankStatementViewProps {
   expenses: Expense[];
   /** Feste Personen der Liste. */
   members: string[];
+  /** Mit dem HA-Benutzer verknüpfte Person: Zahler-Vorschlag ohne Gerätenamen. */
+  linkedPayer: string | null;
   /** Nach erfolgreichem Import: ListView lädt die Liste neu. */
   onImported: () => void;
 }
@@ -64,6 +66,7 @@ function BankStatementView({
   listId,
   expenses,
   members,
+  linkedPayer,
   onImported,
 }: BankStatementViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,15 +88,13 @@ function BankStatementView({
     [expenses, members],
   );
 
-  const [payerName, setPayerName] = useState<string>(
-    () => localStorage.getItem(payerStorageKey(listId))?.trim() ?? "",
+  const [payerName, setPayerName] = useState<string>(() =>
+    initialPayer(listId, linkedPayer),
   );
   // Freitext nur, wenn es noch niemanden zur Auswahl gibt; sonst Dropdown mit
   // Platzhalter "Bitte wählen …" (kein stilles Raten, wer bezahlt hat).
   const [addingNewPayer, setAddingNewPayer] = useState<boolean>(
-    () =>
-      !localStorage.getItem(payerStorageKey(listId))?.trim() &&
-      knownPersons.length === 0,
+    () => !initialPayer(listId, linkedPayer) && knownPersons.length === 0,
   );
 
   // Dropdown-Optionen: Bekannte plus ein evtl. gemerkter Gerätename.

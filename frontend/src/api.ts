@@ -32,6 +32,15 @@ export const CURRENCIES = [...MAIN_CURRENCIES, ...MORE_CURRENCIES] as const;
  */
 export type Splits = Record<string, number>;
 
+/** Person der Liste → Home-Assistant-Benutzer-ID. */
+export type MemberUsers = Record<string, string>;
+
+/** Personen einer Liste samt Verknüpfung mit HA-Benutzern (ein Bearbeitungsstand). */
+export interface MembersValue {
+  members: string[];
+  memberUsers: MemberUsers;
+}
+
 export interface Expense {
   id: string;
   list_id: string;
@@ -56,6 +65,8 @@ export interface SharedList {
   created_at: string;
   /** Feste Personen der Liste (aus dem Tutorial); leer bei Altlisten. */
   members: string[];
+  /** Person → Home-Assistant-Benutzer-ID (verknüpfte Personen). */
+  member_users: MemberUsers;
   expenses: Expense[];
 }
 
@@ -185,15 +196,21 @@ export async function getList(uuid: string): Promise<SharedList> {
   return handleResponse<SharedList>(response);
 }
 
-/** Personen der Liste ersetzen (Namen werden im Backend getrimmt/entdoppelt). */
+/**
+ * Personen der Liste samt Verknüpfung mit HA-Benutzern ersetzen (Namen werden
+ * im Backend getrimmt/entdoppelt).
+ */
 export async function setMembers(
   uuid: string,
-  members: string[],
+  value: MembersValue,
 ): Promise<SharedList> {
   const response = await fetch(`${API_BASE_URL}/lists/${uuid}/members`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ members }),
+    body: JSON.stringify({
+      members: value.members,
+      member_users: value.memberUsers,
+    }),
   });
   return handleResponse<SharedList>(response);
 }
@@ -319,4 +336,71 @@ export async function importBankStatement(
     },
   );
   return handleResponse<BankImportResult>(response);
+}
+
+// ---------- Home-Assistant-Benutzer (nur über Ingress) ----------
+
+/** Der über Home Assistant angemeldete Benutzer (Spiegel von `CurrentUser`). */
+export interface CurrentUser {
+  id: string;
+  name: string;
+  display_name: string;
+}
+
+/** Auswählbarer HA-Benutzer für die Personen einer Liste. */
+export interface HaUserOption {
+  id: string;
+  name: string;
+}
+
+/** Eine Liste unter „Meine Listen“ (Spiegel von `MyList`). */
+export interface MyList {
+  id: string;
+  title: string;
+  /** Letzter eigener Besuch; null = nur als Person verknüpft. */
+  last_visit: string | null;
+  /** Als Person der Liste verknüpft (dann nicht entfernbar). */
+  is_member: boolean;
+}
+
+/** Angemeldeter HA-Benutzer oder null (direkter Port, Entwicklung). */
+export async function getMe(): Promise<CurrentUser | null> {
+  const response = await fetch(`${API_BASE_URL}/me`);
+  return handleResponse<CurrentUser | null>(response);
+}
+
+export async function getMyLists(): Promise<MyList[]> {
+  const response = await fetch(`${API_BASE_URL}/me/lists`);
+  return handleResponse<MyList[]>(response);
+}
+
+/** Liste als besucht merken: erscheint dann auf allen Geräten. */
+export async function recordVisit(listId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/me/lists/${listId}`, {
+    method: "PUT",
+  });
+  await handleResponse<void>(response);
+}
+
+/** Liste aus „Meine Listen“ nehmen (die Liste selbst bleibt bestehen). */
+export async function forgetList(listId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/me/lists/${listId}`, {
+    method: "DELETE",
+  });
+  await handleResponse<void>(response);
+}
+
+/** Lokal gemerkte Listen dieses Geräts in „Meine Listen“ übernehmen. */
+export async function importLists(listIds: string[]): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/me/lists/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ list_ids: listIds }),
+  });
+  await handleResponse<void>(response);
+}
+
+export async function getHaUsers(): Promise<HaUserOption[]> {
+  const response = await fetch(`${API_BASE_URL}/ha/users`);
+  return handleResponse<HaUserOption[]>(response);
 }

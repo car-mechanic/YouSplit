@@ -1,26 +1,115 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Clock, Loader2, Plus, Receipt, X } from "lucide-react";
-import { createList } from "../api";
+import { ArrowRight, Clock, Loader2, Plus, Receipt, Users, X } from "lucide-react";
+import { createList, forgetList, getMyLists, importLists } from "../api";
+import type { MyList } from "../api";
 import { formatDate } from "../format";
-import { addRecentList, getRecentLists, removeRecentList } from "../recentLists";
+import { useMe } from "../haSession";
+import { useLiveRefresh } from "../liveRefresh";
+import {
+  addRecentList,
+  clearRecentLists,
+  getRecentLists,
+  removeRecentList,
+} from "../recentLists";
 import type { RecentList } from "../recentLists";
 import Modal from "../components/Modal";
+
+// Neue geteilte Listen anderer erscheinen ohne Neuladen
+const LIVE_REFRESH_MS = 30_000;
+
+/** Eine Karte der Startseite, egal ob vom Server oder aus dem Browser. */
+interface ListCard {
+  id: string;
+  title: string;
+  /** Unterzeile: Datum des letzten Besuchs oder Hinweis */
+  subtitle: string;
+  /** Darf aus der Übersicht entfernt werden */
+  removable: boolean;
+  shared: boolean;
+}
+
+function fromServer(item: MyList): ListCard {
+  return {
+    id: item.id,
+    title: item.title,
+    subtitle: item.last_visit ? formatDate(item.last_visit) : "Mit dir geteilt",
+    // Als Person verknüpft: bleibt sichtbar, solange die Verknüpfung besteht
+    removable: !item.is_member,
+    shared: item.is_member,
+  };
+}
+
+function fromBrowser(item: RecentList): ListCard {
+  return {
+    id: item.id,
+    title: item.title,
+    subtitle: formatDate(item.lastVisit),
+    removable: true,
+    shared: false,
+  };
+}
 
 /**
  * Startseite / Dashboard (Roadmap 3.0 #1).
  *
  * Zwei Aufgaben: eine neue Liste anlegen (CTA → Titel-Modal → Weiterleitung) und
- * die auf diesem Gerät zuletzt besuchten Listen als anklickbare Cards wieder
- * zugänglich machen (aus dem `localStorage`, siehe recentLists.ts). YouSplit hat
- * kein Login – dies ist der Wiedereinstieg in die eigenen Listen.
+ * die eigenen Listen als anklickbare Cards wieder zugänglich machen.
+ *
+ * Über Home Assistant kommen sie vom Server („Meine Listen“, auf allen Geräten
+ * gleich). Ohne Home Assistant (direkter Port) gibt es kein Konto: dann bleibt
+ * es bei den in diesem Browser besuchten Listen (recentLists.ts).
  */
 function Home() {
   const navigate = useNavigate();
+  const me = useMe();
 
-  // Zuletzt besuchte Listen einmal beim Mounten aus dem Storage lesen.
+  // Ohne HA-Benutzer: einmal beim Mounten aus dem Storage lesen.
   const [recent, setRecent] = useState<RecentList[]>(() => getRecentLists());
+  // Mit HA-Benutzer: null, solange „Meine Listen“ noch lädt
+  const [mine, setMine] = useState<MyList[] | null>(null);
+  const [listsError, setListsError] = useState<string | null>(null);
+
+  const loadMine = useCallback(() => {
+    getMyLists()
+      .then((lists) => {
+        setMine(lists);
+        setListsError(null);
+      })
+      .catch(() => setListsError("Deine Listen konnten nicht geladen werden."));
+  }, []);
+
+  useEffect(() => {
+    if (!me) return;
+    // Was dieser Browser bisher nur lokal kannte, einmalig übernehmen. Danach
+    // ist der Server maßgeblich: entfernte Listen kämen sonst wieder.
+    const local = getRecentLists().map((item) => item.id);
+    const imported =
+      local.length > 0
+        ? importLists(local).then(() => clearRecentLists())
+        : Promise.resolve();
+    imported
+      .catch(() => {
+        // Übernahme klappt beim nächsten Aufruf erneut
+      })
+      .finally(loadMine);
+  }, [me, loadMine]);
+
+  useLiveRefresh(
+    useCallback(() => {
+      if (me) loadMine();
+    }, [me, loadMine]),
+    LIVE_REFRESH_MS,
+  );
+
+  // undefined: Benutzer unbekannt, null: Server-Listen laden noch
+  const cards: ListCard[] | null =
+    me === undefined
+      ? null
+      : me
+        ? (mine?.map(fromServer) ?? null)
+        : recent.map(fromBrowser);
 
   // Anlege-Modal
   const [showCreate, setShowCreate] = useState(false);
@@ -42,8 +131,9 @@ function Home() {
     setError(null);
     try {
       const list = await createList(title.trim());
-      // Neue Liste sofort in die Merkliste aufnehmen und öffnen.
-      addRecentList(list.id, list.title);
+      // Ohne Home Assistant: neue Liste sofort in die Merkliste aufnehmen.
+      // Mit Home Assistant merkt sie sich der Server beim Öffnen.
+      if (!me) addRecentList(list.id, list.title);
       // Dort startet beim ersten Öffnen das Tutorial (Personen festlegen usw.)
       navigate(`/list/${list.id}`);
     } catch {
@@ -53,8 +143,16 @@ function Home() {
   }
 
   function handleRemove(id: string) {
-    removeRecentList(id);
-    setRecent(getRecentLists());
+    if (!me) {
+      removeRecentList(id);
+      setRecent(getRecentLists());
+      return;
+    }
+    setMine((prev) => prev?.filter((item) => item.id !== id) ?? prev);
+    forgetList(id).catch(() => {
+      setListsError("Liste konnte nicht entfernt werden.");
+      loadMine();
+    });
   }
 
   return (
@@ -83,23 +181,31 @@ function Home() {
         Neue Liste erstellen
       </button>
 
-      {/* ---------- Zuletzt besucht ---------- */}
+      {/* ---------- Meine Listen / Zuletzt besucht ---------- */}
       <section className="mt-10">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold tracking-wide text-gray-500 uppercase">
           <Clock className="h-4 w-4" />
-          Zuletzt besucht
+          {me ? "Meine Listen" : "Zuletzt besucht"}
         </h2>
 
-        {recent.length === 0 ? (
+        {listsError && <p className="mb-3 text-sm text-red-600">{listsError}</p>}
+
+        {cards === null ? (
+          !listsError && (
+            <div className="flex justify-center p-8">
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+            </div>
+          )
+        ) : cards.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center">
             <p className="text-gray-500">
-              Noch keine Listen besucht. Erstelle deine erste Liste oder öffne
-              einen geteilten Link.
+              Noch keine Listen. Erstelle deine erste Liste oder öffne einen
+              geteilten Link.
             </p>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {recent.map((item) => (
+            {cards.map((item) => (
               <div key={item.id} className="relative">
                 <Link
                   to={`/list/${item.id}`}
@@ -109,20 +215,26 @@ function Home() {
                     {item.title}
                   </p>
                   <p className="mt-1 flex items-center gap-1 text-xs text-gray-400">
-                    <Clock className="h-3 w-3" />
-                    {formatDate(item.lastVisit)}
+                    {item.shared ? (
+                      <Users className="h-3 w-3" aria-label="Du bist Person der Liste" />
+                    ) : (
+                      <Clock className="h-3 w-3" />
+                    )}
+                    {item.subtitle}
                     <ArrowRight className="ml-auto h-4 w-4 text-emerald-600" />
                   </p>
                 </Link>
-                {/* Aus der Merkliste entfernen (löscht NICHT die Liste selbst) */}
-                <button
-                  type="button"
-                  onClick={() => handleRemove(item.id)}
-                  aria-label={`„${item.title}“ aus der Liste entfernen`}
-                  className="absolute top-2 right-2 rounded-lg p-1.5 text-gray-300 transition hover:bg-gray-100 hover:text-gray-500"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                {/* Aus der Übersicht entfernen (löscht NICHT die Liste selbst) */}
+                {item.removable && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(item.id)}
+                    aria-label={`„${item.title}“ aus der Übersicht entfernen`}
+                    className="absolute top-2 right-2 rounded-lg p-1.5 text-gray-300 transition hover:bg-gray-100 hover:text-gray-500"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             ))}
           </div>

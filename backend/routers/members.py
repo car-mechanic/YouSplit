@@ -26,7 +26,8 @@ def set_members(
     """Ersetzt die Personen der Liste (Namen getrimmt, ohne Doppelte).
 
     Bestehende Ausgaben bleiben unberuehrt: wer aus der Liste entfernt wird, aber
-    in Ausgaben vorkommt, zaehlt im Kassensturz weiter mit.
+    in Ausgaben vorkommt, zaehlt im Kassensturz weiter mit. Die Verknuepfungen
+    mit HA-Benutzern werden ebenfalls ersetzt.
     """
     shared_list = db.get(models.SharedList, list_id)
     if shared_list is None:
@@ -34,6 +35,7 @@ def set_members(
             status_code=status.HTTP_404_NOT_FOUND, detail="Liste nicht gefunden"
         )
     shared_list.members = payload.members
+    shared_list.member_users = payload.member_users
     db.commit()
     db.refresh(shared_list)
     return shared_list

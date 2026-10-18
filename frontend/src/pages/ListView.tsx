@@ -1,15 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import {
   deleteExpense,
   getList,
   getSettlement,
+  recordVisit,
   setMembers,
   updateExpense,
   withReason,
 } from "../api";
-import type { Expense, ExpenseUpdate, SharedList, Settlement } from "../api";
+import type {
+  CurrentUser,
+  Expense,
+  ExpenseUpdate,
+  MembersValue,
+  SharedList,
+  Settlement,
+} from "../api";
 import ConfirmDialog from "../components/ConfirmDialog";
 import EditExpenseModal from "../components/EditExpenseModal";
 import ExpenseForm from "../components/ExpenseForm";
@@ -24,6 +32,9 @@ import SettlementCard from "../components/SettlementCard";
 import StatisticsBoard from "../components/StatisticsBoard";
 import { formatMoney } from "../format";
 import { categoryOptions } from "../categories";
+import { linkedName } from "../haMembers";
+import { loadMe } from "../haSession";
+import { useLiveRefresh } from "../liveRefresh";
 import { collectParticipants } from "../participants";
 import { addRecentList } from "../recentLists";
 import { markTutorialDone, shouldShowTutorial } from "../tutorialStorage";
@@ -35,22 +46,30 @@ import { markTutorialDone, shouldShowTutorial } from "../tutorialStorage";
  * (Settlement) sowie das Bearbeiten/Löschen einzelner Ausgaben. Die eigentliche
  * Darstellung liegt in fokussierten Teil-Komponenten: ListHeader (Kopf),
  * SettlementCard (Kassensturz), ExpenseForm (Anlegen/Scannen) und ExpenseList.
+ *
+ * Änderungen anderer Geräte holt die Seite alle LIVE_REFRESH_MS nach.
  */
+const LIVE_REFRESH_MS = 10_000;
+
 function ListView() {
   const { id } = useParams<{ id: string }>();
 
   // Tutorial beim ersten Öffnen der Liste auf diesem Gerät – nach dem Anlegen
-  // wie über einen geteilten Link (siehe tutorialStorage.ts).
-  const [showTutorial, setShowTutorial] = useState(
-    () => !!id && shouldShowTutorial(id),
-  );
+  // wie über einen geteilten Link (siehe tutorialStorage.ts). Entschieden wird
+  // erst nach dem Laden: wer als HA-Benutzer schon verknüpft ist, kennt die
+  // Liste von einem anderen Gerät.
+  const [showTutorial, setShowTutorial] = useState(false);
   const [editingMembers, setEditingMembers] = useState(false);
   // Neu einhängen des Formulars nach dem Tutorial: es liest den dort gewählten
   // Zahler ("Wer bist du?") nur beim Einhängen aus dem localStorage.
   const [formKey, setFormKey] = useState(0);
 
   const [list, setList] = useState<SharedList | null>(null);
+  const [me, setMe] = useState<CurrentUser | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Zählt eigene Änderungen. Ein Nachladen, das vor einer eigenen Änderung
+  // gestartet ist, kennt sie noch nicht und darf sie nicht überschreiben.
+  const localChanges = useRef(0);
 
   // Aktive Ansicht der Tab-Navigation (Ausgaben/Kassensturz/Statistiken).
   const [activeTab, setActiveTab] = useState<ListTab>("expenses");
@@ -80,14 +99,53 @@ function ListView() {
 
   useEffect(() => {
     if (!id) return;
-    getList(id)
-      .then((loaded) => {
+    Promise.all([getList(id), loadMe()])
+      .then(([loaded, user]) => {
         setList(loaded);
-        // Besuch für die Startseite merken (UUID + Titel + jetzt), rein lokal.
-        addRecentList(loaded.id, loaded.title);
+        setMe(user);
+        // Besuch für die Startseite merken: über Home Assistant auf dem Server
+        // (alle Geräte), sonst nur in diesem Browser.
+        if (user) {
+          recordVisit(loaded.id).catch(() => {
+            // Komfort: die Liste funktioniert auch ohne Eintrag
+          });
+        } else {
+          addRecentList(loaded.id, loaded.title);
+        }
+        setShowTutorial(
+          shouldShowTutorial(loaded.id) &&
+            linkedName(loaded.member_users, user?.id) === null,
+        );
       })
       .catch(() => setLoadError("Liste nicht gefunden. Ist der Link korrekt?"));
   }, [id]);
+
+  // Änderungen anderer Geräte und Benutzer übernehmen
+  const refreshList = useCallback(() => {
+    if (!id) return;
+    const changesAtStart = localChanges.current;
+    getList(id)
+      .then((loaded) => {
+        if (localChanges.current !== changesAtStart) return;
+        // Unverändert: alten Stand behalten, sonst lädt der Kassensturz neu
+        setList((prev) =>
+          prev && JSON.stringify(prev) === JSON.stringify(loaded) ? prev : loaded,
+        );
+      })
+      .catch(() => {
+        // Netz kurz weg: beim nächsten Durchlauf erneut
+      });
+  }, [id]);
+  useLiveRefresh(refreshList, LIVE_REFRESH_MS);
+
+  /** Eigene Änderung in den State übernehmen (siehe localChanges). */
+  const applyLocalChange = useCallback(
+    (update: (prev: SharedList) => SharedList) => {
+      localChanges.current += 1;
+      setList((prev) => (prev ? update(prev) : prev));
+    },
+    [],
+  );
 
   // Kassensturz vom Backend holen – neu bei jeder Änderung der Ausgabenliste.
   // Das vorige Ergebnis bleibt während des Nachladens sichtbar (kein Flackern).
@@ -114,9 +172,10 @@ function ListView() {
   // Neue Ausgabe (aus ExpenseForm) in den lokalen State übernehmen. Die
   // list-Änderung löst automatisch das Nachladen des Kassensturzes aus.
   function handleExpenseAdded(expense: Expense) {
-    setList((prev) =>
-      prev ? { ...prev, expenses: [...prev.expenses, expense] } : prev,
-    );
+    applyLocalChange((prev) => ({
+      ...prev,
+      expenses: [...prev.expenses, expense],
+    }));
   }
 
   async function handleEditSave(data: ExpenseUpdate) {
@@ -125,16 +184,12 @@ function ListView() {
     setEditError(null);
     try {
       const updated = await updateExpense(id, editing.id, data);
-      setList((prev) =>
-        prev
-          ? {
-              ...prev,
-              expenses: prev.expenses.map((item) =>
-                item.id === updated.id ? updated : item,
-              ),
-            }
-          : prev,
-      );
+      applyLocalChange((prev) => ({
+        ...prev,
+        expenses: prev.expenses.map((item) =>
+          item.id === updated.id ? updated : item,
+        ),
+      }));
       setEditing(null);
     } catch (error) {
       setEditError(
@@ -151,14 +206,10 @@ function ListView() {
     setDeleteBusy(true);
     try {
       await deleteExpense(id, target.id);
-      setList((prev) =>
-        prev
-          ? {
-              ...prev,
-              expenses: prev.expenses.filter((item) => item.id !== target.id),
-            }
-          : prev,
-      );
+      applyLocalChange((prev) => ({
+        ...prev,
+        expenses: prev.expenses.filter((item) => item.id !== target.id),
+      }));
       setDeleting(null);
     } catch (error) {
       setDeleting(null);
@@ -168,10 +219,14 @@ function ListView() {
     }
   }
 
-  async function saveMembers(members: string[]) {
+  async function saveMembers(value: MembersValue) {
     if (!id) return;
-    const updated = await setMembers(id, members);
-    setList((prev) => (prev ? { ...prev, members: updated.members } : prev));
+    const updated = await setMembers(id, value);
+    applyLocalChange((prev) => ({
+      ...prev,
+      members: updated.members,
+      member_users: updated.member_users,
+    }));
   }
 
   function closeTutorial() {
@@ -218,6 +273,12 @@ function ListView() {
     (sum, expense) => sum + expense.amount * expense.exchange_rate,
     0,
   );
+  const membersValue: MembersValue = {
+    members: list.members,
+    memberUsers: list.member_users,
+  };
+  // Die mit dem HA-Benutzer verknüpfte Person (Zahler-Vorschlag)
+  const myName = linkedName(list.member_users, me?.id);
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-6 sm:py-8">
@@ -239,6 +300,7 @@ function ListView() {
             listId={list.id}
             expenses={list.expenses}
             members={list.members}
+            linkedPayer={myName}
             onExpenseAdded={handleExpenseAdded}
             titleInputRef={titleInputRef}
           />
@@ -280,10 +342,11 @@ function ListView() {
           listId={list.id}
           expenses={list.expenses}
           members={list.members}
+          linkedPayer={myName}
           onImported={() => {
             // Neue Ausgaben laden → Liste + Kassensturz aktualisieren sich
             getList(list.id)
-              .then(setList)
+              .then((loaded) => applyLocalChange(() => loaded))
               .catch(() => {
                 // Nachladen ist Komfort – bei Fehler bleibt der alte Stand
               });
@@ -295,7 +358,7 @@ function ListView() {
       {showTutorial && (
         <ListTutorial
           listId={list.id}
-          initialMembers={list.members}
+          initialMembers={membersValue}
           onSaveMembers={saveMembers}
           onClose={closeTutorial}
         />
@@ -303,7 +366,7 @@ function ListView() {
 
       {editingMembers && (
         <MembersDialog
-          initial={list.members}
+          initial={membersValue}
           onSave={saveMembers}
           onClose={() => setEditingMembers(false)}
         />

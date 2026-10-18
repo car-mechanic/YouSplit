@@ -1,16 +1,20 @@
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { House, Plus, UserPlus, X } from "lucide-react";
+import type { MembersValue } from "../api";
+import { addHaUser, addName, removeMember, unlinkedUsers } from "../haMembers";
+import { useHaUsers, useMe } from "../haSession";
 
 interface MembersEditorProps {
-  value: string[];
-  onChange: (members: string[]) => void;
+  value: MembersValue;
+  onChange: (value: MembersValue) => void;
   autoFocus?: boolean;
 }
 
 /**
- * Namen der Personen einer Liste eintippen: Feld + „Hinzufügen“ (oder Enter),
- * darunter die Namen als entfernbare Chips. Leere und doppelte Namen werden
- * ignoriert (das Backend bereinigt zusätzlich).
+ * Personen einer Liste festlegen: Namen eintippen (Feld + „Hinzufügen“ oder
+ * Enter) oder, über Home Assistant geöffnet, HA-Benutzer antippen. Verknüpfte
+ * Benutzer sehen die Liste dann auf all ihren Geräten. Darunter die Personen
+ * als entfernbare Chips; leere und doppelte Namen werden ignoriert.
  */
 function MembersEditor({
   value,
@@ -18,15 +22,44 @@ function MembersEditor({
   autoFocus = false,
 }: MembersEditorProps) {
   const [draft, setDraft] = useState("");
+  const me = useMe();
+  const haUsers = useHaUsers(!!me);
+  const offered = unlinkedUsers(haUsers.users, value);
 
   function add() {
-    const name = draft.trim();
-    if (name && !value.includes(name)) onChange([...value, name]);
+    onChange(addName(value, draft));
     setDraft("");
   }
 
   return (
     <div>
+      {me && (offered.length > 0 || haUsers.error) && (
+        <div className="mb-3">
+          <p className="mb-2 flex items-center gap-1 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+            <House className="h-3.5 w-3.5" />
+            Aus Home Assistant
+          </p>
+          {haUsers.error ? (
+            <p className="text-sm text-red-600">{haUsers.error}</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {offered.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  onClick={() => onChange(addHaUser(value, user))}
+                  className="flex items-center gap-1 rounded-full border border-emerald-600 px-3 py-1.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  {user.name}
+                  {user.id === me.id && " (du)"}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <input
           type="text"
@@ -38,7 +71,7 @@ function MembersEditor({
               add();
             }
           }}
-          placeholder="Name, z. B. Max"
+          placeholder={me ? "Oder Name eintippen, z. B. Max" : "Name, z. B. Max"}
           maxLength={100}
           autoFocus={autoFocus}
           aria-label="Name einer Person"
@@ -56,22 +89,26 @@ function MembersEditor({
         </button>
       </div>
 
-      {value.length > 0 && (
+      {value.members.length > 0 && (
         <ul
           className="mt-3 flex flex-wrap gap-2"
           aria-label="Personen der Liste"
         >
-          {value.map((name) => (
+          {value.members.map((name) => (
             <li
               key={name}
               className="flex items-center gap-1 rounded-full bg-emerald-50 py-1 pr-1 pl-3 text-sm font-medium text-emerald-800"
             >
+              {value.memberUsers[name] !== undefined && (
+                <House
+                  className="h-3.5 w-3.5 text-emerald-600"
+                  aria-label="Home-Assistant-Benutzer"
+                />
+              )}
               {name}
               <button
                 type="button"
-                onClick={() =>
-                  onChange(value.filter((member) => member !== name))
-                }
+                onClick={() => onChange(removeMember(value, name))}
                 aria-label={`${name} entfernen`}
                 className="rounded-full p-1 text-emerald-600 transition hover:bg-emerald-100"
               >

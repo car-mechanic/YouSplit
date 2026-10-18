@@ -14,7 +14,7 @@ import {
 } from "../categories";
 import { formatMoney, parseAmount } from "../format";
 import { collectParticipants } from "../participants";
-import { payerStorageKey } from "../payerStorage";
+import { initialPayer, payerStorageKey } from "../payerStorage";
 import AdvancedSplitter from "./AdvancedSplitter";
 import CategorySelect from "./CategorySelect";
 import type { AdvancedSplitterHandle } from "./AdvancedSplitter";
@@ -47,6 +47,8 @@ interface ExpenseFormProps {
   expenses: Expense[];
   /** Feste Personen der Liste (stehen vorn in Zahler-Auswahl und Splitter). */
   members: string[];
+  /** Mit dem HA-Benutzer verknüpfte Person: Zahler-Vorschlag ohne Gerätenamen. */
+  linkedPayer: string | null;
   /** Wird nach erfolgreichem Anlegen mit der neuen Ausgabe aufgerufen. */
   onExpenseAdded: (expense: Expense) => void;
   /** Ref aufs Titelfeld, damit der Empty-State-CTA hierher fokussieren kann. */
@@ -67,6 +69,7 @@ function ExpenseForm({
   listId,
   expenses,
   members,
+  linkedPayer,
   onExpenseAdded,
   titleInputRef,
 }: ExpenseFormProps) {
@@ -82,15 +85,16 @@ function ExpenseForm({
   const splitterRef = useRef<AdvancedSplitterHandle>(null);
   const [splitterKey, setSplitterKey] = useState(0);
 
-  // Zahler + Geräte-Erkennung: initial der auf diesem Gerät gemerkte Name.
-  const [payerName, setPayerName] = useState<string>(
-    () => localStorage.getItem(payerStorageKey(listId))?.trim() ?? "",
+  // Zahler + Geräte-Erkennung: initial der auf diesem Gerät gemerkte Name,
+  // sonst die mit dem HA-Benutzer verknüpfte Person.
+  const [payerName, setPayerName] = useState<string>(() =>
+    initialPayer(listId, linkedPayer),
   );
   // Freitext ("Neue Person") nur, wenn es niemanden zur Auswahl gibt – sonst
   // Dropdown, notfalls mit "Bitte wählen …".
   const [addingNewPayer, setAddingNewPayer] = useState<boolean>(
     () =>
-      !localStorage.getItem(payerStorageKey(listId))?.trim() &&
+      !initialPayer(listId, linkedPayer) &&
       collectParticipants(expenses, members).length === 0,
   );
   // Listenwechsel ohne Remount: gemerkten Namen der neuen Liste übernehmen.
@@ -98,8 +102,8 @@ function ExpenseForm({
   const [knownListId, setKnownListId] = useState(listId);
   if (listId !== knownListId) {
     setKnownListId(listId);
-    const stored = localStorage.getItem(payerStorageKey(listId))?.trim();
-    setPayerName(stored ?? "");
+    const stored = initialPayer(listId, linkedPayer);
+    setPayerName(stored);
     setAddingNewPayer(
       !stored && collectParticipants(expenses, members).length === 0,
     );

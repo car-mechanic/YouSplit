@@ -65,3 +65,8 @@ function persist(lists: RecentList[]): void {
     // die Merkliste ist ein Komfort-Feature, kein Muss.
   }
 }
+
+/** Leert die Merkliste (nach der Übernahme in „Meine Listen“ auf dem Server). */
+export function clearRecentLists(): void {
+  persist([]);
+}
