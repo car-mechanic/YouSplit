@@ -56,6 +56,7 @@ einfach selbst eintragen. Wie das geht, steht oben in der Datei.
 ## Was YouSplit kann
 
 - Listen ohne Benutzerkonto, geteilt per Link
+- In Home Assistant: HA-Benutzer als Personen auswählen; ihre Listen erscheinen auf all ihren Geräten und aktualisieren sich live
 - Ausgaben mit Zahler, Kategorie und Datum
 - Kontoauszug-Import für Lebensmitteleinkäufe
 - Kosten frei aufteilen: gleichmäßig, in Prozent, nach Beträgen oder Anteilen

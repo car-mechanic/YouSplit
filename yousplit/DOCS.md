@@ -15,6 +15,27 @@ Die Datenbank (PostgreSQL, läuft im Add-on) liegt in `/data/postgres` und ist T
 Home-Assistant-Backups. Für ein konsistentes Backup hält Home Assistant das
 Add-on währenddessen kurz an (`backup: cold`).
 
+## Mehrere Geräte und Benutzer
+
+Über Home Assistant (Seitenleiste bzw. *Benutzeroberfläche öffnen*) erkennt
+YouSplit den angemeldeten HA-Benutzer. Dann gilt:
+
+- **Meine Listen** auf der Startseite kommen vom Server: jede Liste, die du
+  geöffnet hast, und jede, in der du als Person verknüpft bist. Handy, PC und
+  Tablet zeigen dieselben Listen.
+- **Personen aus Home Assistant:** Beim Festlegen der Personen erscheinen die
+  HA-Benutzer zum Antippen. Verknüpfte Personen sehen die Liste automatisch und
+  werden beim Eintragen als Zahler vorgeschlagen.
+- **Live:** Eine offene Liste lädt alle 10 Sekunden nach und sofort, wenn du in
+  den Tab zurückkehrst.
+
+Alle HA-Benutzer sehen YouSplit in der Seitenleiste (`panel_admin: false`).
+Für die Benutzerliste braucht das Add-on Zugriff auf die Home-Assistant-API
+(`homeassistant_api`). Es liest damit nur die Benutzer (Name und ID).
+
+Über Port 8099 (Share-Links) gibt es keinen HA-Benutzer: dort merkt sich jeder
+Browser seine Listen selbst, wie bisher.
+
 ## Teilen
 
 Listen werden per Link geteilt (wer den Link kennt, sieht die Liste). Über

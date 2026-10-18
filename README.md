@@ -54,6 +54,7 @@ add it yourself. The format is explained at the top of the file.
 ## Features
 
 - Lists without user accounts, shared by link
+- In Home Assistant: pick HA users as people; their lists show up on all their devices and refresh live
 - Expenses with payer, category and date
 - Bank statement import for grocery purchases
 - Flexible cost splitting: equally, by percentage, by amount or by shares
