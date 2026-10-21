@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0
+- Neu: Darkmode. Der Schalter (Mond/Sonne) sitzt oben links; die Wahl wird je
+  Gerät gemerkt, beim ersten Besuch gilt die Systemeinstellung.
+
 ## 1.2.0
 - Behoben: Listen vom Handy fehlten am PC. Die Startseite kannte nur die Listen,
   die auf dem jeweiligen Gerät geöffnet wurden. Über Home Assistant stehen sie
