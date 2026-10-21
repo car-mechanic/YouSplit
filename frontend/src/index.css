@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+/*
+ * Dunkles Design: Die Klassen im Code nutzen feste Grau-/Weiß-Töne. Statt jede
+ * Stelle mit dark:-Varianten zu versehen, wird hier die Grau-Skala invertiert
+ * und die Emerald-/Warn-Tönungen abgedunkelt. Kräftige Töne (emerald-600/700,
+ * text-white auf Buttons) bleiben bewusst unverändert.
+ */
+.dark {
+  color-scheme: dark;
+  --color-gray-50: #111318;
+  --color-gray-100: #1c1f26;
+  --color-gray-200: #2a2e37;
+  --color-gray-300: #3b404b;
+  --color-gray-400: #8b93a1;
+  --color-gray-500: #a0a7b4;
+  --color-gray-600: #b8bdc8;
+  --color-gray-700: #d0d4dc;
+  --color-gray-800: #e2e5ea;
+  --color-gray-900: #f3f4f6;
+  --color-emerald-50: #0f2a22;
+  --color-emerald-100: #123a2e;
+  --color-emerald-200: #1b5a46;
+  --color-red-50: #3a1618;
+  --color-amber-50: #33270d;
+  --color-amber-100: #473411;
+  --color-amber-700: #fbbf24;
+  --color-amber-800: #fcd34d;
+  --color-emerald-800: #6ee7b7;
+}
+
+.dark .bg-white {
+  background-color: var(--color-gray-100);
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  color-scheme: dark;
+}
