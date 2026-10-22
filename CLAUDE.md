@@ -47,6 +47,10 @@ cd frontend && npm test && npm run lint && npm run build
 - **Logging** über `logging.getLogger("yousplit.<bereich>")`, kein `print`.
 - **Neue Logik bringt ihren Test mit** (Backend `unittest`, Frontend vitest
   für reine Module).
+- **Tests über Subagenten:** Nach Änderungen in `backend/` den Agenten
+  `backend-tester`, nach Änderungen in `frontend/` den `frontend-tester`
+  verwenden (Definitionen in `.claude/agents/`). Bei beidem parallel starten.
+  So bleibt die lange Testausgabe aus dem Hauptkontext.
 - **Neues Release des Add-ons:** `version` in `yousplit/config.yaml` erhöhen und
   `yousplit/CHANGELOG.md` ergänzen. Ohne neue Version bietet HA kein Update an.
 
