@@ -34,7 +34,8 @@ cd frontend && npm test && npm run lint && npm run build
 
 ## Konventionen
 
-- **Kommentare und Docstrings auf Deutsch**, sie erklären das Warum.
+- **Kommentare und Docstrings auf Englisch**, sie erklären das Warum.
+  Bestehende deutsche Kommentare werden beim Anfassen der Stelle mit übersetzt.
   Bezeichner bleiben englisch.
 - **Eine Wahrheit:** TS-Typen in `frontend/src/api.ts` spiegeln die
   Pydantic-Schemas. Ändert sich ein Schema, beide Seiten anpassen.
@@ -59,7 +60,7 @@ cd frontend && npm test && npm run lint && npm run build
 Nach jeder abgeschlossenen Änderung **immer ohne Rückfrage** committen und
 nach `origin/main` pushen (`git add -A && git commit && git push`).
 Commit-Nachrichten, READMEs und sonstige Repo-Doku auf Englisch, kurz und
-aussagekräftig (Code-Kommentare bleiben deutsch, siehe Konventionen). Vorher prüfen, dass
+aussagekräftig. Vorher prüfen, dass
 keine Geheimnisse (`.env`, Tokens) im Commit landen.
 
 ## Lessons learned
