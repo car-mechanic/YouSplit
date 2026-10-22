@@ -1,11 +1,13 @@
 import math
 import uuid
 from datetime import date, datetime
+from typing import Annotated
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StringConstraints,
     field_validator,
     model_validator,
 )
@@ -84,16 +86,29 @@ def _normalize_currency(value: object) -> str:
     return code
 
 
+def _text(max_length: int):
+    """Pflichttext ohne Leerzeichen am Rand. Sonst waere 'Kev ' im Kassensturz
+    eine zweite Person neben 'Kev' und ein Titel aus Leerzeichen gueltig."""
+    return Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=max_length)
+    ]
+
+
+Title = _text(200)
+PersonName = _text(100)
+Category = _text(100)
+
+
 # ---------- Expenses ----------
 
 class ExpenseCreate(BaseModel):
     """Request-Body zum Anlegen einer Ausgabe."""
 
-    title: str = Field(min_length=1, max_length=200)
+    title: Title
     amount: float = Field(gt=0, allow_inf_nan=False)
-    payer_name: str = Field(min_length=1, max_length=100)
+    payer_name: PersonName
     split_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
-    category: str = Field(default="Unknown/Manuell", min_length=1, max_length=100)
+    category: Category = "Unknown/Manuell"
     # Ausgabedatum (Datum auf dem Bon bzw. der Buchung). Grundlage der
     # Duplikats-Pruefung; ``None`` = Anlagetag.
     receipt_date: date | None = None
@@ -128,11 +143,11 @@ class ExpenseUpdate(BaseModel):
     geleert (``None``).
     """
 
-    title: str = Field(min_length=1, max_length=200)
+    title: Title
     amount: float = Field(gt=0, allow_inf_nan=False)
-    payer_name: str = Field(min_length=1, max_length=100)
+    payer_name: PersonName
     split_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
-    category: str = Field(min_length=1, max_length=100)
+    category: Category
     receipt_date: date | None = None
     # Erfassungswaehrung (der Kurs wird beim Speichern serverseitig neu ermittelt)
     currency: str = "EUR"
@@ -202,7 +217,7 @@ def _normalize_members(value: list[str]) -> list[str]:
 
 
 class SharedListCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: Title
 
 
 class MembersUpdate(BaseModel):
@@ -337,8 +352,8 @@ class CategoryRuleCreate(BaseModel):
     der spaetere Abgleich mit Kontoauszugs-Empfaengern case-insensitive ist.
     """
 
-    recipient_keyword: str = Field(min_length=1, max_length=200)
-    category: str = Field(min_length=1, max_length=100)
+    recipient_keyword: Title
+    category: Category
 
     @field_validator("recipient_keyword")
     @classmethod
@@ -391,7 +406,7 @@ class BankStatementPreview(BaseModel):
 class BankImportItem(BaseModel):
     """Eine zu uebernehmende Buchung (positiver Betrag, immer EUR)."""
 
-    title: str = Field(min_length=1, max_length=200)
+    title: Title
     amount: float = Field(gt=0, allow_inf_nan=False)
     booking_date: date | None = None
 
@@ -399,8 +414,8 @@ class BankImportItem(BaseModel):
 class BankImportRequest(BaseModel):
     """Request-Body von ``POST …/bank-statement/import``."""
 
-    payer_name: str = Field(min_length=1, max_length=100)
-    category: str = Field(default="Lebensmittel", min_length=1, max_length=100)
+    payer_name: PersonName
+    category: Category = "Lebensmittel"
     items: list[BankImportItem] = Field(min_length=1, max_length=500)
 
 

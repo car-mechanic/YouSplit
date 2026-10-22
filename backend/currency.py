@@ -11,6 +11,7 @@ direkt der Frankfurter-Antwort für ``from={WÄHRUNG}&to=EUR`` (Feld ``rates.EUR
 """
 
 import logging
+import math
 import os
 
 import httpx
@@ -69,17 +70,21 @@ async def get_exchange_rate(currency: str) -> float:
             )
         response.raise_for_status()
         data = response.json()
-        rate = data["rates"][BASE_CURRENCY]
+        rate = float(data["rates"][BASE_CURRENCY])
+        # NaN/0/negativ wuerden die EUR-Salden der ganzen Liste verfaelschen
+        if not math.isfinite(rate) or rate <= 0:
+            raise ValueError(f"unplausibler Kurs {rate}")
     except httpx.HTTPError as exc:
         logger.error("Kursabruf fuer %s fehlgeschlagen (%s): %s", code, type(exc).__name__, exc)
         raise ExchangeRateError(
             f"Wechselkurs für {code} nicht abrufbar ({type(exc).__name__})"
         ) from exc
-    except (KeyError, ValueError) as exc:
-        # Unbekannte Währung liefert z. B. {"rates": {}} ohne EUR-Schlüssel
+    except (KeyError, TypeError, ValueError) as exc:
+        # Unbekannte Währung liefert z. B. {"rates": {}} ohne EUR-Schlüssel;
+        # TypeError bei null/Liste statt Objekt bzw. Zahl
         logger.error("Unerwartete Kurs-Antwort fuer %s: %s", code, exc)
         raise ExchangeRateError(
             f"Kein EUR-Kurs für Währung '{code}' erhalten"
         ) from exc
 
-    return float(rate)
+    return rate
