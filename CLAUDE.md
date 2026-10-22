@@ -58,7 +58,8 @@ cd frontend && npm test && npm run lint && npm run build
 
 Nach jeder abgeschlossenen Änderung **immer ohne Rückfrage** committen und
 nach `origin/main` pushen (`git add -A && git commit && git push`).
-Commit-Nachrichten auf Deutsch, kurz und aussagekräftig. Vorher prüfen, dass
+Commit-Nachrichten, READMEs und sonstige Repo-Doku auf Englisch, kurz und
+aussagekräftig (Code-Kommentare bleiben deutsch, siehe Konventionen). Vorher prüfen, dass
 keine Geheimnisse (`.env`, Tokens) im Commit landen.
 
 ## Lessons learned
