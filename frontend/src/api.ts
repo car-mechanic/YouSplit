@@ -196,6 +196,27 @@ export async function getList(uuid: string): Promise<SharedList> {
   return handleResponse<SharedList>(response);
 }
 
+/** Rename a list (menu on the overview cards). */
+export async function renameList(
+  uuid: string,
+  title: string,
+): Promise<SharedList> {
+  const response = await fetch(`${API_BASE_URL}/lists/${uuid}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return handleResponse<SharedList>(response);
+}
+
+/** Delete a list for everyone, including all its expenses. */
+export async function deleteList(uuid: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/lists/${uuid}`, {
+    method: "DELETE",
+  });
+  return handleResponse<void>(response);
+}
+
 /**
  * Personen der Liste samt Verknüpfung mit HA-Benutzern ersetzen (Namen werden
  * im Backend getrimmt/entdoppelt).

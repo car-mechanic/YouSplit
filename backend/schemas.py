@@ -220,6 +220,12 @@ class SharedListCreate(BaseModel):
     title: Title
 
 
+class SharedListUpdate(BaseModel):
+    """Request body of ``PATCH /lists/{id}``: rename a list."""
+
+    title: Title
+
+
 class MembersUpdate(BaseModel):
     """Request-Body von ``PUT /lists/{id}/members``: die Personen der Liste.
 

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, Check, Link2, Users } from "lucide-react";
+import { Check, Link2, Users } from "lucide-react";
 import { formatEuro } from "../format";
 import { copyCurrentLink } from "../clipboard";
+import { useMe } from "../haSession";
 
 interface ListHeaderProps {
   title: string;
@@ -26,6 +26,9 @@ function ListHeader({
   onEditMembers,
 }: ListHeaderProps) {
   const [copied, setCopied] = useState(false);
+  // In Home Assistant, lists are shared by adding HA users as persons. The
+  // ingress URL only works for logged-in HA users, so a copied link is useless.
+  const inHomeAssistant = Boolean(useMe());
 
   async function handleCopyLink() {
     // copyCurrentLink klappt auch ohne HTTPS (z. B. über http://192.168…)
@@ -39,13 +42,6 @@ function ListHeader({
     <header className="rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-700 p-6 text-white shadow-lg shadow-emerald-600/20">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <Link
-            to="/"
-            className="mb-2 inline-flex items-center gap-1 text-sm text-emerald-100 transition hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Übersicht
-          </Link>
           <h1 className="truncate text-2xl font-bold">{title}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-emerald-100">
             {expenseCount} {expenseCount === 1 ? "Ausgabe" : "Ausgaben"}
@@ -63,21 +59,34 @@ function ListHeader({
             </button>
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleCopyLink}
-          className="flex shrink-0 items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-medium transition hover:bg-white/25"
-        >
-          {copied ? (
-            <>
-              <Check className="h-4 w-4" /> Kopiert!
-            </>
-          ) : (
-            <>
-              <Link2 className="h-4 w-4" /> Link teilen
-            </>
-          )}
-        </button>
+        {inHomeAssistant ? (
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            title="In Home Assistant teilst du Listen, indem du Benutzer als Personen einträgst"
+            className="flex shrink-0 cursor-not-allowed items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-medium text-emerald-200/70"
+          >
+            <Link2 className="h-4 w-4" />
+            <span className="line-through">Link teilen</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-sm font-medium transition hover:bg-white/25"
+          >
+            {copied ? (
+              <>
+                <Check className="h-4 w-4" /> Kopiert!
+              </>
+            ) : (
+              <>
+                <Link2 className="h-4 w-4" /> Link teilen
+              </>
+            )}
+          </button>
+        )}
       </div>
       <p className="mt-5 text-4xl font-bold tracking-tight">
         {formatEuro(total)}

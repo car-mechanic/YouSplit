@@ -57,6 +57,13 @@ export function removeRecentList(id: string): void {
   persist(getRecentLists().filter((item) => item.id !== id));
 }
 
+/** Update the stored title after a rename, keeping order and visit time. */
+export function renameRecentList(id: string, title: string): void {
+  persist(
+    getRecentLists().map((item) => (item.id === id ? { ...item, title } : item)),
+  );
+}
+
 function persist(lists: RecentList[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lists));

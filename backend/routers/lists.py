@@ -171,6 +171,40 @@ def get_list(
     return _get_list_or_404(db, list_id)
 
 
+@router.patch("/{list_id}", response_model=schemas.SharedListResponse)
+def rename_list(
+    list_id: uuid.UUID,
+    payload: schemas.SharedListUpdate,
+    db: Session = Depends(get_db),
+) -> models.SharedList:
+    """Renames a list (from the menu on the overview cards)."""
+    shared_list = _get_list_or_404(db, list_id)
+    shared_list.title = payload.title
+    db.commit()
+    db.refresh(shared_list)
+    return shared_list
+
+
+@router.delete("/{list_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_list(
+    list_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Deletes a list with its expenses, category rules and bookmarks.
+
+    Bookmarks are removed explicitly: the ``ON DELETE CASCADE`` only exists on
+    PostgreSQL, SQLite (tests) does not enforce foreign keys by default.
+    """
+    shared_list = _get_list_or_404(db, list_id)
+    db.query(models.ListBookmark).filter(
+        models.ListBookmark.list_id == list_id
+    ).delete(synchronize_session=False)
+    db.delete(shared_list)
+    db.commit()
+    logger.info("List %s deleted", list_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{list_id}/settlement", response_model=schemas.SettlementResponse)
 def get_settlement(
     list_id: uuid.UUID,

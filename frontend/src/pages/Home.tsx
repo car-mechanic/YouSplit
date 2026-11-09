@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Clock, Loader2, Plus, Receipt, Users, X } from "lucide-react";
-import { createList, forgetList, getMyLists, importLists } from "../api";
+import { ArrowRight, Clock, Loader2, Plus, Receipt, Users } from "lucide-react";
+import {
+  createList,
+  deleteList,
+  getMyLists,
+  importLists,
+  renameList,
+  withReason,
+} from "../api";
 import type { MyList } from "../api";
 import { formatDate } from "../format";
 import { useMe } from "../haSession";
@@ -12,8 +19,11 @@ import {
   clearRecentLists,
   getRecentLists,
   removeRecentList,
+  renameRecentList,
 } from "../recentLists";
 import type { RecentList } from "../recentLists";
+import ConfirmDialog from "../components/ConfirmDialog";
+import ListCardMenu from "../components/ListCardMenu";
 import Modal from "../components/Modal";
 
 // Neue geteilte Listen anderer erscheinen ohne Neuladen
@@ -25,8 +35,6 @@ interface ListCard {
   title: string;
   /** Unterzeile: Datum des letzten Besuchs oder Hinweis */
   subtitle: string;
-  /** Darf aus der Übersicht entfernt werden */
-  removable: boolean;
   shared: boolean;
 }
 
@@ -35,8 +43,6 @@ function fromServer(item: MyList): ListCard {
     id: item.id,
     title: item.title,
     subtitle: item.last_visit ? formatDate(item.last_visit) : "Mit dir geteilt",
-    // Als Person verknüpft: bleibt sichtbar, solange die Verknüpfung besteht
-    removable: !item.is_member,
     shared: item.is_member,
   };
 }
@@ -46,7 +52,6 @@ function fromBrowser(item: RecentList): ListCard {
     id: item.id,
     title: item.title,
     subtitle: formatDate(item.lastVisit),
-    removable: true,
     shared: false,
   };
 }
@@ -142,17 +147,64 @@ function Home() {
     }
   }
 
-  function handleRemove(id: string) {
-    if (!me) {
-      removeRecentList(id);
-      setRecent(getRecentLists());
-      return;
+  // Rename / delete from the card menu
+  const [renaming, setRenaming] = useState<ListCard | null>(null);
+  const [newTitle, setNewTitle] = useState("");
+  const [deleting, setDeleting] = useState<ListCard | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  function openRename(card: ListCard) {
+    setNewTitle(card.title);
+    setActionError(null);
+    setRenaming(card);
+  }
+
+  function openDelete(card: ListCard) {
+    setActionError(null);
+    setDeleting(card);
+  }
+
+  async function handleRename(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = newTitle.trim();
+    if (!renaming || !trimmed) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await renameList(renaming.id, trimmed);
+      if (me) {
+        loadMine();
+      } else {
+        renameRecentList(renaming.id, trimmed);
+        setRecent(getRecentLists());
+      }
+      setRenaming(null);
+    } catch (err) {
+      setActionError(withReason("Liste konnte nicht umbenannt werden", err));
+    } finally {
+      setBusy(false);
     }
-    setMine((prev) => prev?.filter((item) => item.id !== id) ?? prev);
-    forgetList(id).catch(() => {
-      setListsError("Liste konnte nicht entfernt werden.");
-      loadMine();
-    });
+  }
+
+  async function handleDelete() {
+    if (!deleting) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await deleteList(deleting.id);
+      if (me) {
+        setMine((prev) => prev?.filter((item) => item.id !== deleting.id) ?? prev);
+      } else {
+        removeRecentList(deleting.id);
+        setRecent(getRecentLists());
+      }
+      setDeleting(null);
+    } catch (err) {
+      setActionError(withReason("Liste konnte nicht gelöscht werden", err));
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -166,8 +218,8 @@ function Home() {
           YouSplit
         </h1>
         <p className="mt-2 max-w-md text-gray-500">
-          Gemeinsame Ausgaben festhalten – ganz ohne Konto. Liste erstellen, Link
-          teilen, fertig.
+          Gemeinsame Ausgaben festhalten. Liste erstellen, Benutzer eintragen und
+          fertig.
         </p>
       </div>
 
@@ -224,22 +276,75 @@ function Home() {
                     <ArrowRight className="ml-auto h-4 w-4 text-emerald-600" />
                   </p>
                 </Link>
-                {/* Aus der Übersicht entfernen (löscht NICHT die Liste selbst) */}
-                {item.removable && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemove(item.id)}
-                    aria-label={`„${item.title}“ aus der Übersicht entfernen`}
-                    className="absolute top-2 right-2 rounded-lg p-1.5 text-gray-300 transition hover:bg-gray-100 hover:text-gray-500"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+                <ListCardMenu
+                  title={item.title}
+                  onRename={() => openRename(item)}
+                  onDelete={() => openDelete(item)}
+                />
               </div>
             ))}
           </div>
         )}
       </section>
+
+      {/* ---------- Modal: rename a list ---------- */}
+      {renaming && (
+        <Modal title="Liste umbenennen" onClose={() => setRenaming(null)}>
+          <form onSubmit={handleRename}>
+            <label
+              htmlFor="rename-list-title"
+              className="mb-2 block text-sm font-medium text-gray-700"
+            >
+              Neuer Name
+            </label>
+            <input
+              id="rename-list-title"
+              type="text"
+              value={newTitle}
+              onChange={(event) => setNewTitle(event.target.value)}
+              maxLength={200}
+              autoFocus
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+            />
+
+            {actionError && <p className="mt-3 text-sm text-red-600">{actionError}</p>}
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setRenaming(null)}
+                disabled={busy}
+                className="rounded-xl border border-gray-300 px-4 py-3 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="submit"
+                disabled={busy || !newTitle.trim()}
+                className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : "Speichern"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ---------- Dialog: delete a list for everyone ---------- */}
+      {deleting && (
+        <ConfirmDialog
+          title="Liste löschen?"
+          message={
+            actionError ??
+            `„${deleting.title}“ wird mit allen Ausgaben für alle Personen gelöscht. Das lässt sich nicht rückgängig machen.`
+          }
+          confirmLabel="Endgültig löschen"
+          tone="danger"
+          loading={busy}
+          onConfirm={() => void handleDelete()}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
 
       {/* ---------- Modal: Titel für neue Liste ---------- */}
       {showCreate && (

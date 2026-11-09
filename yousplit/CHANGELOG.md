@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+- Neu: Drei-Punkte-Menü an jeder Liste in der Übersicht mit „Umbenennen“ und
+  „Löschen“. Löschen entfernt die Liste samt Ausgaben für alle Personen.
+- Der Darkmode-Schalter sitzt jetzt oben rechts, „← Übersicht“ oben links.
+- In Home Assistant ist „Link teilen“ ausgegraut: Listen teilst du dort, indem
+  du Benutzer als Personen einträgst.
+- Neuer Text auf der Startseite.
+
 ## 1.3.0
 - Neu: Darkmode. Der Schalter (Mond/Sonne) sitzt oben links; die Wahl wird je
   Gerät gemerkt, beim ersten Besuch gilt die Systemeinstellung.
