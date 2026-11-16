@@ -94,22 +94,20 @@ class Expense(Base):
 
 
 class CategoryRule(Base):
-    """Gelernte Zuordnung "Empfaenger-Stichwort -> Kategorie" je Liste.
+    """Remembered merchant of a list: recipient keyword -> category.
 
-    Fundament fuer den Kontoauszug-Import (Roadmap 4.0 #3): Beim Parsen eines
-    Kontoauszugs merkt sich das System hier, welche Kategorie ein Nutzer einem
-    Empfaenger (z. B. ``recipient_keyword="REWE"`` -> ``category="Lebensmittel"``)
-    zugewiesen hat, um kuenftige Buchungen desselben Empfaengers automatisch
-    einzuordnen ("Smart Memory"). Die eigentliche Anwendungslogik folgt in einem
-    spaeteren Schritt des Epics — dies legt nur das Schema an.
+    Created from the bank statement preview ("Haendler merken") and applied by
+    ``bank_statement.classify`` before the merchant list, so owner names like
+    "Hans Meier e.K." are recognized next time and false hits can be ignored.
+    Logic and allowed categories: ``category_rules``.
     """
 
     __tablename__ = "category_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     list_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("shared_lists.id"))
-    # Stichwort aus dem Verwendungszweck/Empfaenger (case-insensitive gedacht),
-    # z. B. "REWE", "AMAZON", "DB VERTRIEB".
+    # Keyword as typed (trimmed). Matching folds case, umlauts and punctuation,
+    # so "Hans Meier e.K." and "HANS MEIER E K" are the same rule.
     recipient_keyword: Mapped[str] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(100))
 

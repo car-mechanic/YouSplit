@@ -438,6 +438,15 @@ def _fold(text: str) -> str:
     return re.sub(r"[^A-Z0-9]+", " ", stripped).strip()
 
 
+def fold_keyword(text: str) -> str:
+    """Public form of ``_fold`` for rule keywords.
+
+    Rules are matched on the folded text, so callers that store or compare
+    keywords (``category_rules``) must use the very same normalization.
+    """
+    return _fold(text)
+
+
 @dataclass(frozen=True)
 class MerchantEntry:
     """Ein Eintrag der Haendlerliste (Stichwort bereits mit ``_fold`` normalisiert)."""
@@ -765,8 +774,31 @@ def _owner_market_label(folded: str) -> str | None:
     return label
 
 
+@dataclass(frozen=True)
+class PreparedRules:
+    """Rule pairs with the keyword already folded (see ``prepare_rules``)."""
+
+    entries: tuple[tuple[str, str], ...]
+
+
+def prepare_rules(rules: list[tuple[str, str]] | None) -> PreparedRules:
+    """Fold the rule keywords once for many ``classify`` calls.
+
+    A preview classifies every booking against every rule; folding the
+    keywords per booking would repeat the same work bookings x rules times.
+    Keywords that fold to nothing could never match and are dropped.
+    """
+    entries = []
+    for keyword, category in rules or []:
+        normalized = _fold(keyword)
+        if normalized:
+            entries.append((normalized, category))
+    return PreparedRules(entries=tuple(entries))
+
+
 def classify(
-    description: str, rules: list[tuple[str, str]] | None = None
+    description: str,
+    rules: PreparedRules | list[tuple[str, str]] | None = None,
 ) -> Classification:
     """Assign a category to a booking.
 
@@ -776,13 +808,16 @@ def classify(
     keyword wins. The owner-market heuristic (legal form + grocery sector word,
     see ``_owner_market_label``) is the last resort because it is the least
     certain. No hit: ``category=None``.
+
+    Callers classifying many bookings should pass ``prepare_rules(...)`` so
+    the keywords are folded once instead of per booking.
     """
     folded = _fold(description)
+    prepared = rules if isinstance(rules, PreparedRules) else prepare_rules(rules)
 
     best_rule: tuple[str, str] | None = None
-    for keyword, category in rules or []:
-        normalized = _fold(keyword)
-        if normalized and f" {normalized} " in f" {folded} ":
+    for normalized, category in prepared.entries:
+        if f" {normalized} " in f" {folded} ":
             if best_rule is None or len(normalized) > len(best_rule[0]):
                 best_rule = (normalized, category)
     if best_rule is not None:

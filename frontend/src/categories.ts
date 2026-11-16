@@ -17,6 +17,20 @@ export const DEFAULT_CATEGORIES = [
 
 export const FALLBACK_CATEGORY = "Sonstiges";
 
+/**
+ * Categories of a remembered merchant (bank statement import). Mirror of
+ * `category_rules.RULE_CATEGORIES` in the backend. The import only creates
+ * grocery expenses, so a rule says either "food" or "not food, ignore it".
+ */
+export const RULE_CATEGORY_FOOD = "Lebensmittel";
+export const RULE_CATEGORY_IGNORE = "Ignorieren";
+export const RULE_CATEGORIES = [RULE_CATEGORY_FOOD, RULE_CATEGORY_IGNORE] as const;
+
+/** Display name of a rule category in the import view. */
+export function ruleCategoryLabel(category: string): string {
+  return category === RULE_CATEGORY_IGNORE ? "Keine Lebensmittel" : category;
+}
+
 /** Altwert ohne Kategorie (frühere manuelle Einträge). */
 export const UNCATEGORIZED = "Unknown/Manuell";
 

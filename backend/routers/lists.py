@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 import bank_statement
+import category_rules
 import duplicates
 import models
 import schemas
@@ -352,12 +353,7 @@ def parse_bank_statement(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
-    rules = [
-        (rule.recipient_keyword, rule.category)
-        for rule in db.query(models.CategoryRule)
-        .filter(models.CategoryRule.list_id == list_id)
-        .all()
-    ]
+    rules = bank_statement.prepare_rules(category_rules.rule_pairs(db, list_id))
     existing_keys = {
         (round(expense.amount, 2), expense.receipt_date or expense.created_at.date())
         for expense in db.query(models.Expense)
@@ -396,6 +392,38 @@ def parse_bank_statement(
     return schemas.BankStatementPreview(
         transactions=transactions, warnings=result.warnings
     )
+
+
+@router.post(
+    "/{list_id}/bank-statement/classify",
+    response_model=schemas.BankClassifyResponse,
+)
+def classify_bank_bookings(
+    list_id: uuid.UUID,
+    payload: schemas.BankClassifyRequest,
+    db: Session = Depends(get_db),
+) -> schemas.BankClassifyResponse:
+    """Classify preview texts again with the list's current rules.
+
+    Called after the user remembered a merchant: the PDF is not kept, so the
+    preview sends its booking texts and gets the same result ``parse`` would
+    give now. One source of truth for matching instead of a copy in the
+    frontend. The sign of the amount is the caller's business (only expenses
+    are shown), so ``is_food`` here only reflects the category.
+    """
+    _get_list_or_404(db, list_id)
+    rules = bank_statement.prepare_rules(category_rules.rule_pairs(db, list_id))
+    results = []
+    for description in payload.descriptions:
+        classification = bank_statement.classify(description, rules)
+        results.append(
+            schemas.BankClassification(
+                category=classification.category,
+                label=classification.label,
+                is_food=classification.is_food,
+            )
+        )
+    return schemas.BankClassifyResponse(results=results)
 
 
 @router.post(
@@ -455,3 +483,64 @@ def import_bank_statement(
         created=len(payload.items), total=round(total, 2)
     )
 
+
+# ---------- Remembered merchants (category rules of the import) ----------
+
+def _rule_error(exc: category_rules.RuleError) -> HTTPException:
+    return HTTPException(status_code=exc.status_code, detail=str(exc))
+
+
+@router.get(
+    "/{list_id}/category-rules",
+    response_model=list[schemas.CategoryRuleResponse],
+)
+def get_category_rules(
+    list_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> list[models.CategoryRule]:
+    """Remembered merchants of the list, sorted by keyword."""
+    _get_list_or_404(db, list_id)
+    return category_rules.list_rules(db, list_id)
+
+
+@router.post(
+    "/{list_id}/category-rules",
+    response_model=schemas.CategoryRuleResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def save_category_rule(
+    list_id: uuid.UUID,
+    payload: schemas.CategoryRuleCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> models.CategoryRule:
+    """Remember a merchant. The same keyword (after folding) updates the
+    existing rule and answers 200 instead of 201."""
+    _get_list_or_404(db, list_id)
+    try:
+        rule, created = category_rules.upsert_rule(
+            db, list_id, payload.recipient_keyword, payload.category
+        )
+    except category_rules.RuleError as exc:
+        raise _rule_error(exc) from exc
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return rule
+
+
+@router.delete(
+    "/{list_id}/category-rules/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_category_rule(
+    list_id: uuid.UUID,
+    rule_id: uuid.UUID,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Forget a remembered merchant (404 if it belongs to another list)."""
+    _get_list_or_404(db, list_id)
+    try:
+        category_rules.delete_rule(db, list_id, rule_id)
+    except category_rules.RuleError as exc:
+        raise _rule_error(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

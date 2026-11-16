@@ -58,6 +58,16 @@ businesses, restaurants and similar trades are excluded.
 The list is certainly not complete. If your shop is missing, you can simply
 add it yourself. The format is explained at the top of the file.
 
+### Remembering merchants
+
+You can also teach a list a merchant in the bank statement preview. For an
+unrecognized or wrongly classified booking, choose "Remember merchant",
+confirm or edit the suggested keyword, and pick "Groceries" or "Not
+groceries". The rule applies to that list only, takes precedence over the
+built-in list and the heuristic, and matches whole words only. The preview is
+reclassified immediately. Under "Remembered merchants" you can view and
+delete the rules.
+
 ## Features
 
 - Lists without user accounts, shared by link

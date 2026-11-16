@@ -343,6 +343,54 @@ export async function parseBankStatement(
   return handleResponse<BankStatementPreview>(response);
 }
 
+/** Result of `classify` for one booking text (mirror of `BankClassification`). */
+export interface BankClassification {
+  category: string | null;
+  label: string | null;
+  is_food: boolean;
+}
+
+export interface BankClassifyResponse {
+  results: BankClassification[];
+}
+
+/** Texts per request; mirrors `MAX_CLASSIFY_TEXTS` in `schemas.py`. */
+const CLASSIFY_BATCH_SIZE = 500;
+/** Longest text per entry; mirrors `MAX_CLASSIFY_TEXT_LENGTH` in `schemas.py`. */
+const CLASSIFY_TEXT_LENGTH = 500;
+
+/**
+ * Classify preview texts again with the list's current rules (after a merchant
+ * was remembered or forgotten). The PDF is not stored, so the texts go back.
+ * Results come in the order of `descriptions`.
+ *
+ * The parser has no fixed booking limit, so long statements are sent in
+ * blocks instead of guessing a maximum the backend would have to accept.
+ * Merchant names sit at the start of a booking text; cutting it off does not
+ * change the result in practice.
+ */
+export async function classifyBankBookings(
+  uuid: string,
+  descriptions: string[],
+): Promise<BankClassification[]> {
+  const results: BankClassification[] = [];
+  for (let start = 0; start < descriptions.length; start += CLASSIFY_BATCH_SIZE) {
+    const batch = descriptions
+      .slice(start, start + CLASSIFY_BATCH_SIZE)
+      .map((text) => text.slice(0, CLASSIFY_TEXT_LENGTH));
+    const response = await fetch(
+      `${API_BASE_URL}/lists/${uuid}/bank-statement/classify`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descriptions: batch }),
+      },
+    );
+    results.push(...(await handleResponse<BankClassifyResponse>(response)).results);
+  }
+  return results;
+}
+
 /** Die in der Vorschau bestätigten Buchungen als einzelne Ausgaben anlegen. */
 export async function importBankStatement(
   uuid: string,
@@ -357,6 +405,55 @@ export async function importBankStatement(
     },
   );
   return handleResponse<BankImportResult>(response);
+}
+
+// ---------- Remembered merchants (category rules of the import) ----------
+
+/** A remembered merchant (mirror of `CategoryRuleResponse`). */
+export interface CategoryRule {
+  id: string;
+  list_id: string;
+  recipient_keyword: string;
+  /** `RULE_CATEGORY_FOOD` or `RULE_CATEGORY_IGNORE` (categories.ts). */
+  category: string;
+}
+
+/** Request body (mirror of `CategoryRuleCreate`). */
+export interface CategoryRuleCreate {
+  recipient_keyword: string;
+  category: string;
+}
+
+export async function getCategoryRules(uuid: string): Promise<CategoryRule[]> {
+  const response = await fetch(`${API_BASE_URL}/lists/${uuid}/category-rules`);
+  return handleResponse<CategoryRule[]>(response);
+}
+
+/**
+ * Remember a merchant. The same keyword (ignoring case, umlauts, punctuation)
+ * updates the existing rule instead of adding a second one.
+ */
+export async function saveCategoryRule(
+  uuid: string,
+  rule: CategoryRuleCreate,
+): Promise<CategoryRule> {
+  const response = await fetch(`${API_BASE_URL}/lists/${uuid}/category-rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rule),
+  });
+  return handleResponse<CategoryRule>(response);
+}
+
+export async function deleteCategoryRule(
+  uuid: string,
+  ruleId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/lists/${uuid}/category-rules/${ruleId}`,
+    { method: "DELETE" },
+  );
+  await handleResponse<void>(response);
 }
 
 // ---------- Home-Assistant-Benutzer (nur über Ingress) ----------

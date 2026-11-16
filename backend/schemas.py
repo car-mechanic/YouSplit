@@ -352,23 +352,19 @@ class SettlementResponse(BaseModel):
 # ---------- Kategorie-Regeln (Kontoauszug-Import, Roadmap 4.0 #3) ----------
 
 class CategoryRuleCreate(BaseModel):
-    """Request-Body zum Anlegen/Lernen einer Kategorie-Regel.
+    """Request body to remember a merchant ("Haendler merken").
 
-    ``recipient_keyword`` wird getrimmt und grossgeschrieben gespeichert, damit
-    der spaetere Abgleich mit Kontoauszugs-Empfaengern case-insensitive ist.
+    Only the field types are checked here. Minimum length (on the folded
+    keyword) and the allowed categories live in ``category_rules`` so the API
+    can answer with a readable German ``detail`` instead of a field list.
     """
 
     recipient_keyword: Title
     category: Category
 
-    @field_validator("recipient_keyword")
-    @classmethod
-    def normalize_keyword(cls, value: str) -> str:
-        return value.strip().upper()
-
 
 class CategoryRuleResponse(BaseModel):
-    """Response-Form einer Kategorie-Regel (aus dem ORM-Objekt serialisiert)."""
+    """Response form of a category rule (serialized from the ORM object)."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -407,6 +403,37 @@ class BankStatementPreview(BaseModel):
 
     transactions: list[BankTransaction]
     warnings: list[str] = []
+
+
+# The parser has no fixed booking limit, so the frontend sends long previews
+# in blocks of this size (``CLASSIFY_BATCH_SIZE`` in api.ts) instead of the
+# backend guessing a maximum. Texts are cut to the length below there as well;
+# the merchant is at the start of a booking text.
+MAX_CLASSIFY_TEXTS = 500
+MAX_CLASSIFY_TEXT_LENGTH = 500
+
+
+class BankClassifyRequest(BaseModel):
+    """Booking texts of a preview to classify again (after a rule changed).
+
+    The PDF is not stored, so the preview sends its texts back instead.
+    """
+
+    descriptions: list[
+        Annotated[str, StringConstraints(max_length=MAX_CLASSIFY_TEXT_LENGTH)]
+    ] = Field(max_length=MAX_CLASSIFY_TEXTS)
+
+
+class BankClassification(BaseModel):
+    """Result of ``classify`` for one booking text (same order as requested)."""
+
+    category: str | None = None
+    label: str | None = None
+    is_food: bool = False
+
+
+class BankClassifyResponse(BaseModel):
+    results: list[BankClassification]
 
 
 class BankImportItem(BaseModel):

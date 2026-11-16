@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0
+- Bank statement import: remembered merchants. For an unrecognized or
+  overridden booking, choose "Remember merchant", confirm or edit the
+  suggested keyword and mark it as groceries or not groceries. The rule is
+  stored per list, takes precedence over the built-in merchant list and the
+  heuristic, and matches whole words only. The preview is reclassified
+  immediately. Rules can be viewed and deleted under "Remembered merchants".
+
 ## 1.5.0
 - Bank statement import recognizes more grocery merchants: the abbreviation EDK
   for Edeka, more Edeka and Rewe name formats, regional Edeka companies and

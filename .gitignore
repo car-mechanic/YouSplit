@@ -28,3 +28,6 @@ test_bon.png
 
 # --- Versehentlich angelegter Ordner (Windows-Pfadfehler) ---
 backend;C/
+
+# --- Portable local runtimes (e.g. Node for tests without Docker) ---
+.tools/

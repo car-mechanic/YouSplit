@@ -18,6 +18,7 @@ from bank_statement import (  # noqa: E402
     load_food_merchants,
     parse_lines,
     parse_merchant_lines,
+    prepare_rules,
 )
 
 
@@ -313,6 +314,15 @@ class ClassifyTest(unittest.TestCase):
         rules = [("REWE", "Sonstiges"), ("MEIN LADEN", CATEGORY_FOOD)]
         self.assertEqual(classify("REWE Markt", rules).category, "Sonstiges")
         self.assertTrue(classify("Zahlung Mein Laden", rules).is_food)
+
+    def test_prepared_rules_match_like_raw_rules(self) -> None:
+        rules = [("Hans Meier e.K.", "Sonstiges"), ("...", CATEGORY_FOOD)]
+        prepared = prepare_rules(rules)
+        # Keywords are folded once; one that folds to nothing is dropped.
+        self.assertEqual(prepared.entries, (("HANS MEIER E K", "Sonstiges"),))
+        for text in ("Kartenzahlung HANS MEIER E.K. Stadt", "REWE Markt", "..."):
+            with self.subTest(text=text):
+                self.assertEqual(classify(text, prepared), classify(text, rules))
 
 
 class MerchantListTest(unittest.TestCase):

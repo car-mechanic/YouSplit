@@ -36,7 +36,7 @@ function copyWithTextarea(text: string): boolean {
   textarea.select();
   // iOS Safari markiert per select() nicht zuverlässig
   textarea.setSelectionRange(0, text.length);
-  let ok = false;
+  let ok: boolean;
   try {
     ok = document.execCommand("copy");
   } catch {

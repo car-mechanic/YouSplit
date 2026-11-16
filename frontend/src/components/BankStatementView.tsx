@@ -1,18 +1,46 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 import {
   AlertTriangle,
+  BookmarkPlus,
   CheckCircle2,
   ChevronDown,
   FileText,
   Landmark,
   Loader2,
   ShoppingBasket,
+  Store,
+  Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
-import { importBankStatement, parseBankStatement } from "../api";
-import type { BankStatementPreview, BankTransaction, Expense } from "../api";
+import {
+  classifyBankBookings,
+  deleteCategoryRule,
+  getCategoryRules,
+  importBankStatement,
+  parseBankStatement,
+  saveCategoryRule,
+  withReason,
+} from "../api";
+import type {
+  BankStatementPreview,
+  BankTransaction,
+  CategoryRule,
+  Expense,
+} from "../api";
+import {
+  RULE_CATEGORIES,
+  RULE_CATEGORY_FOOD,
+  RULE_CATEGORY_IGNORE,
+  ruleCategoryLabel,
+} from "../categories";
+import {
+  applyClassifications,
+  isKeywordValid,
+  MIN_KEYWORD_LENGTH,
+  suggestKeyword,
+} from "../merchantRules";
 import { formatDate, formatEuro } from "../format";
 import { collectParticipants } from "../participants";
 import { initialPayer, payerStorageKey } from "../payerStorage";
@@ -48,6 +76,13 @@ function titleOf(transaction: BankTransaction): string {
   return (cleaned || transaction.description).slice(0, 60);
 }
 
+/** Open "Händler merken" form of one preview row. */
+interface RememberDraft {
+  index: number;
+  keyword: string;
+  category: string;
+}
+
 /** Cent-genau summieren (Fließkomma-Drift vermeiden). */
 function sumCents(values: number[]): number {
   return values.reduce((sum, value) => sum + Math.round(value * 100), 0) / 100;
@@ -76,11 +111,41 @@ function BankStatementView({
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<BankStatementPreview | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Bumped by every reclassification, new file and reset. A reclassification
+  // only applies its answer if it is still the latest, so a slow response
+  // never lands on another statement or overwrites a newer one.
+  const refreshSeq = useRef(0);
   const [showOthers, setShowOthers] = useState(false);
   const [result, setResult] = useState<{
     created: number;
     total: number;
   } | null>(null);
+
+  // Remembered merchants of the list (server side, shared by all devices).
+  const [rules, setRules] = useState<CategoryRule[]>([]);
+  const [showRules, setShowRules] = useState(false);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  const [remember, setRemember] = useState<RememberDraft | null>(null);
+  const [rememberBusy, setRememberBusy] = useState(false);
+  const [rememberError, setRememberError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCategoryRules(listId)
+      .then((loaded) => {
+        if (!cancelled) setRules(loaded);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setRulesError(
+            withReason("Gemerkte Händler konnten nicht geladen werden", err),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listId]);
 
   // Bekannte Personen der Liste (Zahler und Mit-Esser, wie im Kassensturz)
   const knownPersons = useMemo(
@@ -140,6 +205,7 @@ function BankStatementView({
     setError(null);
     setFileName(file.name);
     setStage("parsing");
+    refreshSeq.current += 1;
     try {
       const parsed = await parseBankStatement(listId, file);
       setPreview(parsed);
@@ -164,6 +230,9 @@ function BankStatementView({
   }
 
   function reset() {
+    refreshSeq.current += 1;
+    setRemember(null);
+    setRememberError(null);
     setStage("idle");
     setPreview(null);
     setSelected(new Set());
@@ -190,6 +259,111 @@ function BankStatementView({
       }
       return next;
     });
+  }
+
+  // ---------- Remembered merchants ----------
+
+  /** The default category is what the user just decided for this row. */
+  function openRemember(transaction: BankTransaction) {
+    const checked = selected.has(transaction.index);
+    const category =
+      !checked && transaction.is_food ? RULE_CATEGORY_IGNORE : RULE_CATEGORY_FOOD;
+    setRememberError(null);
+    setRemember({
+      index: transaction.index,
+      keyword: suggestKeyword(transaction.description, transaction.label),
+      category,
+    });
+  }
+
+  /**
+   * Classify the open preview again in the backend, so every row with the
+   * same merchant follows the changed rules at once. The backend owns the
+   * matching (folding, rule precedence, longest keyword); a local copy would
+   * drift apart from it.
+   *
+   * Both updates are functional: ticks the user sets while the request runs
+   * stay, and the result is dropped if the preview changed meanwhile (new
+   * file, reset or a newer reclassification).
+   */
+  async function refreshPreview(): Promise<void> {
+    const snapshot = preview;
+    if (!snapshot) return;
+    const expenseRows = snapshot.transactions.filter((t) => t.amount < 0);
+    if (expenseRows.length === 0) return;
+    const seq = ++refreshSeq.current;
+    const results = await classifyBankBookings(
+      listId,
+      expenseRows.map((t) => t.description),
+    );
+    if (seq !== refreshSeq.current) return;
+    // Only this function changes the transactions of an open preview, and
+    // every older reclassification was dropped above, so the snapshot is
+    // still the current preview (checked again in the updater).
+    const { transactions } = applyClassifications(
+      snapshot.transactions,
+      expenseRows,
+      results,
+      new Set(),
+    );
+    setPreview((prev) =>
+      prev === snapshot ? { ...prev, transactions } : prev,
+    );
+    setSelected(
+      (prev) =>
+        applyClassifications(snapshot.transactions, expenseRows, results, prev)
+          .selected,
+    );
+  }
+
+  async function handleRememberSave() {
+    if (!remember || !isKeywordValid(remember.keyword)) return;
+    setRememberBusy(true);
+    setRememberError(null);
+    let saved: CategoryRule;
+    try {
+      saved = await saveCategoryRule(listId, {
+        recipient_keyword: remember.keyword.trim(),
+        category: remember.category,
+      });
+    } catch (err) {
+      setRememberError(withReason("Händler konnte nicht gemerkt werden", err));
+      setRememberBusy(false);
+      return;
+    }
+    setRules((current) =>
+      [...current.filter((rule) => rule.id !== saved.id), saved].sort((a, b) =>
+        a.recipient_keyword.localeCompare(b.recipient_keyword, "de"),
+      ),
+    );
+    try {
+      await refreshPreview();
+      setRemember(null);
+    } catch (err) {
+      setRememberError(
+        withReason("Händler gemerkt, aber die Vorschau ist nicht aktuell", err),
+      );
+    } finally {
+      setRememberBusy(false);
+    }
+  }
+
+  async function handleRuleDelete(rule: CategoryRule) {
+    setRulesError(null);
+    try {
+      await deleteCategoryRule(listId, rule.id);
+    } catch (err) {
+      setRulesError(withReason("Händler konnte nicht entfernt werden", err));
+      return;
+    }
+    setRules((current) => current.filter((r) => r.id !== rule.id));
+    try {
+      await refreshPreview();
+    } catch (err) {
+      setRulesError(
+        withReason("Händler entfernt, aber die Vorschau ist nicht aktuell", err),
+      );
+    }
   }
 
   function handlePayerSelect(value: string) {
@@ -265,6 +439,12 @@ function BankStatementView({
 
   function renderRow(transaction: BankTransaction) {
     const checked = selected.has(transaction.index);
+    // Offer to remember the merchant where the detection did not help: no hit
+    // at all, or the user overrode it (picked a non-food row, dropped a food row).
+    const canRemember =
+      stage === "preview" &&
+      (transaction.category === null || checked !== transaction.is_food);
+    const draft = remember?.index === transaction.index ? remember : null;
     return (
       <li key={transaction.index}>
         <label
@@ -302,7 +482,158 @@ function BankStatementView({
             )}
           </span>
         </label>
+        {canRemember && !draft && (
+          <button
+            type="button"
+            onClick={() => openRemember(transaction)}
+            className="ml-10 mt-1 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5" />
+            Händler merken
+          </button>
+        )}
+        {draft && renderRememberForm(draft)}
       </li>
+    );
+  }
+
+  function renderRememberForm(draft: RememberDraft) {
+    const valid = isKeywordValid(draft.keyword);
+    const fieldClass =
+      "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30";
+    return (
+      <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50/40 px-3 py-3 sm:ml-7">
+        <label
+          htmlFor={`remember-keyword-${draft.index}`}
+          className="mb-1 block text-xs font-medium text-gray-700"
+        >
+          Stichwort (Händler oder Empfänger)
+        </label>
+        <input
+          id={`remember-keyword-${draft.index}`}
+          type="text"
+          value={draft.keyword}
+          onChange={(event) =>
+            setRemember({ ...draft, keyword: event.target.value })
+          }
+          maxLength={200}
+          placeholder="z. B. Hans Meier e.K."
+          className={fieldClass}
+        />
+        <label
+          htmlFor={`remember-category-${draft.index}`}
+          className="mb-1 mt-2 block text-xs font-medium text-gray-700"
+        >
+          Buchungen mit diesem Stichwort sind
+        </label>
+        <select
+          id={`remember-category-${draft.index}`}
+          value={draft.category}
+          onChange={(event) =>
+            setRemember({ ...draft, category: event.target.value })
+          }
+          className={fieldClass}
+        >
+          {RULE_CATEGORIES.map((category) => (
+            <option key={category} value={category}>
+              {ruleCategoryLabel(category)}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-gray-400">
+          {valid
+            ? "Gilt ab jetzt für diese Liste, auch für die übrigen Buchungen dieses Auszugs."
+            : `Mindestens ${MIN_KEYWORD_LENGTH} Buchstaben oder Ziffern.`}
+        </p>
+        {rememberError && (
+          <p className="mt-1 text-xs text-red-600">{rememberError}</p>
+        )}
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setRemember(null);
+              setRememberError(null);
+            }}
+            disabled={rememberBusy}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 disabled:opacity-50"
+          >
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleRememberSave()}
+            disabled={rememberBusy || !valid}
+            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+          >
+            {rememberBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Merken
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderRules() {
+    return (
+      <div className="mt-5">
+        <button
+          type="button"
+          onClick={() => setShowRules((open) => !open)}
+          className="flex w-full items-center justify-between rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+        >
+          <span className="flex items-center gap-2">
+            <Store className="h-4 w-4 text-gray-400" />
+            Gemerkte Händler ({rules.length})
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 text-gray-400 transition ${
+              showRules ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {showRules &&
+          (rules.length === 0 ? (
+            <p className="mt-2 rounded-xl bg-gray-50 px-4 py-3 text-xs text-gray-500">
+              Noch keine Händler gemerkt. In der Vorschau kannst du bei
+              unerkannten oder falsch erkannten Buchungen „Händler merken“
+              wählen.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {rules.map((rule) => (
+                <li
+                  key={rule.id}
+                  className="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm text-gray-900">
+                    {rule.recipient_keyword}
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      rule.category === RULE_CATEGORY_FOOD
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {ruleCategoryLabel(rule.category)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleRuleDelete(rule)}
+                    disabled={stage === "importing"}
+                    aria-label={`„${rule.recipient_keyword}“ vergessen`}
+                    title="Vergessen"
+                    className="shrink-0 rounded-lg p-1 text-gray-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ))}
+        {rulesError && <p className="mt-2 text-xs text-red-600">{rulesError}</p>}
+      </div>
     );
   }
 
@@ -369,6 +700,7 @@ function BankStatementView({
             className="hidden"
             onChange={handleInputChange}
           />
+          {renderRules()}
         </>
       )}
 
@@ -458,6 +790,8 @@ function BankStatementView({
                 : `${incomeCount} Einnahmen im Auszug werden ignoriert.`}
             </p>
           )}
+
+          {renderRules()}
 
           {/* Zahler: die Ausgaben werden fair auf alle Personen der Liste geteilt */}
           <div className="mt-5">
