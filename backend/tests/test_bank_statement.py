@@ -162,6 +162,24 @@ class ParseLinesTest(unittest.TestCase):
         bookings = parse_lines(lines).bookings
         self.assertEqual([b.amount for b in bookings], [-9.99])
 
+    def test_volksbank_closing_note_is_no_booking(self) -> None:
+        # Made-up example in the Volksbank layout: after the closing balance an
+        # attachment itemises the fees already booked as "Abschluss".
+        lines = [
+            "30.09. 30.09. Abschluss lt. Anlage 1 4,95 S",
+            "neuer Kontostand vom 30.09.2026 1.000,00 H",
+            "Anlage 1",
+            "30.09.2026",
+            "Wert: 30.09.2026",
+            "Kontokorrentkredit vom 01.07.2026 bis 30.09.2026",
+            "12,50000% Zinsen ab 30.09. 0,00 S",
+            "Kontoführung 4,95 S",
+            "Summe Abschluss in EUR 4,95 S",
+        ]
+        result = parse_lines(lines)
+        self.assertEqual([b.amount for b in result.bookings], [-4.95])
+        self.assertFalse(result.warnings)
+
     def test_betrag_in_folgezeile(self) -> None:
         lines = ["01.09.2026 Kartenzahlung KAUFLAND", "Filiale 123", "-31,40"]
         bookings = parse_lines(lines).bookings

@@ -422,7 +422,14 @@ def parse_lines(lines: list[str]) -> ParseResult:
             current.extra.append(line)
             continue
 
-        # Datierte Zeile
+        # Dated line
+        if not rest and date_match.group(3) is not None and len(date_match.group(3)) == 4:
+            # A bare full date ("30.09.2026") is a document date, e.g. the
+            # Volksbank closing note ("Anlage 1") that itemises interest and fees
+            # already booked as "Abschluss". Opening a booking here would invent
+            # a phantom expense from the itemised amounts.
+            current = None
+            continue
         if _BALANCE_RE.search(rest):
             current = None  # Saldo-/Uebertragszeile, keine Buchung
             continue

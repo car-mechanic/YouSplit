@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.2
+- Volksbank statements: the closing note ("Anlage 1") that itemises interest
+  and fees no longer shows up as an extra expense in the import preview.
+
 ## 1.6.1
 - Bank statement import now reads comdirect "Finanzreport" PDFs. Previously
   they failed because of embedded font CMaps (no text was recognized) and
