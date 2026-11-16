@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1
+- Bank statement import now reads comdirect "Finanzreport" PDFs. Previously
+  they failed because of embedded font CMaps (no text was recognized) and
+  missing spaces in the extracted text. Rows such as "Übertrag / Überweisung"
+  are no longer discarded as balance lines.
+
 ## 1.6.0
 - Bank statement import: remembered merchants. For an unrecognized or
   overridden booking, choose "Remember merchant", confirm or edit the

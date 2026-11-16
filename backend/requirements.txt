@@ -9,5 +9,8 @@ psycopg2-binary==2.9.13
 python-multipart==0.0.32
 httpx==0.28.1
 pdfplumber==0.11.10
+# Pinned explicitly: bank_statement.py patches PDFCIDFont.get_cmap_from_spec.
+# Must match the exact version pdfplumber requires.
+pdfminer.six==20260107
 # Websocket zu Home Assistant Core (HA-Benutzerliste, ha_users.py)
 websockets==17.2

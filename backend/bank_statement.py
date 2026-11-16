@@ -26,6 +26,7 @@ nicht unterstuetzt.
 import io
 import logging
 import re
+import threading
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
@@ -61,11 +62,16 @@ _AMOUNT_RE = re.compile(
     r"(?:\s?(?:EUR|€))?"
 )
 
-# Dated Zeilen mit diesen Woertern sind Salden/Uebertraege, keine Buchungen.
-_BALANCE_RE = re.compile(r"KONTOSTAND|SALDO|ÜBERTRAG|UEBERTRAG", re.IGNORECASE)
-# Nicht-datierte Zeilen, die eine Buchung beenden (Seitenfuss/-kopf, Salden).
+# "Übertrag /" with a slash is a booking type (comdirect: "Übertrag /
+# Überweisung"), not a carry-over line, so it must not drop or end a booking.
+_CARRY_OVER = r"(?:ÜBERTRAG|UEBERTRAG)(?!\s*/)"
+# Dated lines with these words are balances/carry-overs, not bookings.
+_BALANCE_RE = re.compile(rf"KONTOSTAND|SALDO|{_CARRY_OVER}", re.IGNORECASE)
+# Undated lines that end a booking (page header/footer, balances). "USt-ID" is
+# the comdirect page footer; without it the footer lands in the description.
 _BLOCK_END_RE = re.compile(
-    r"KONTOSTAND|SALDO|ÜBERTRAG|UEBERTRAG|KONTOAUSZUG|\bSEITE\s*\d", re.IGNORECASE
+    rf"KONTOSTAND|SALDO|{_CARRY_OVER}|KONTOAUSZUG|\bSEITE\s*\d|\bUST-ID\b",
+    re.IGNORECASE,
 )
 # Ohne Vorzeichen: diese Woerter deuten auf eine Gutschrift (Einnahme) hin.
 _CREDIT_HINTS = (
@@ -120,6 +126,144 @@ class Classification:
 # ---------------------------------------------------------------------------
 
 
+# Pages whose share of space glyphs is below this ratio set every word as its
+# own text run without a space character (comdirect "Finanzreport").
+_SPACELESS_RATIO = 0.01
+# Word gap that still counts as a space on such pages. pdfplumber's default of
+# 3 pt swallows their ~2.8 pt word gaps ("LidlsagtDanke"); 1.5 pt still keeps
+# the letters of one word together.
+_SPACELESS_X_TOLERANCE = 1.5
+
+_HEX_CODE = r"<([0-9A-Fa-f]+)>"
+# Caps against hostile uploads: a real encoding CMap maps at most all 2-byte
+# codes (65,536) and is a few KB in size.
+_MAX_CMAP_CODES = 65_536
+_MAX_CMAP_BYTES = 1_000_000
+
+_cmap_support_lock = threading.Lock()
+_cmap_support_installed = False
+
+
+class _CMapTooLarge(ValueError):
+    """Embedded CMap exceeds the size caps; pdfminer's empty CMap is used."""
+
+
+def _parse_embedded_cmap(data: bytes):  # type: ignore[no-untyped-def]
+    """Build a pdfminer CMap from an embedded encoding CMap stream.
+
+    Only the ``cidrange``/``cidchar`` sections are needed to map character
+    codes to CIDs; the text itself still comes from the font's ``ToUnicode``.
+    Raises ``_CMapTooLarge`` if the stream or the number of codes exceeds the
+    caps, so a crafted range list cannot make us loop over millions of codes.
+    """
+    from pdfminer.cmapdb import FileCMap
+
+    if len(data) > _MAX_CMAP_BYTES:
+        raise _CMapTooLarge(f"CMap stream has {len(data)} bytes")
+    text = data.decode("latin-1")
+    cmap = FileCMap()
+    codes = 0
+
+    def count(n: int) -> None:
+        nonlocal codes
+        codes += n
+        if codes > _MAX_CMAP_CODES:
+            raise _CMapTooLarge(f"CMap maps more than {_MAX_CMAP_CODES} codes")
+
+    for block in re.findall(r"begincidrange(.*?)endcidrange", text, re.S):
+        for low, high, cid in re.findall(
+            rf"{_HEX_CODE}\s*{_HEX_CODE}\s*(\d+)", block
+        ):
+            width = len(low) // 2
+            start, end = int(low, 16), int(high, 16)
+            # At most 2-byte codes, as in the codespaces of real fonts.
+            if not 1 <= width <= 2 or len(high) != len(low) or end < start:
+                continue
+            count(end - start + 1)
+            for offset in range(end - start + 1):
+                code = (start + offset).to_bytes(width, "big").decode("latin-1")
+                cmap.add_code2cid(code, int(cid) + offset)
+    for block in re.findall(r"begincidchar(.*?)endcidchar", text, re.S):
+        for code, cid in re.findall(rf"{_HEX_CODE}\s*(\d+)", block):
+            if len(code) in (2, 4):
+                count(1)
+                cmap.add_code2cid(bytes.fromhex(code).decode("latin-1"), int(cid))
+    return cmap
+
+
+def _wrap_get_cmap_from_spec(original):  # type: ignore[no-untyped-def]
+    """Wrap pdfminer's ``PDFCIDFont.get_cmap_from_spec``.
+
+    Only an empty CMap (pdfminer did not know the CMap by name) is replaced,
+    and only if the font embeds a readable one. Any error in our code keeps
+    pdfminer's own result instead of failing the whole PDF.
+    """
+    from pdfminer.cmapdb import CMap
+    from pdfminer.pdftypes import PDFStream, resolve1
+
+    def get_cmap_from_spec(self, spec, strict):  # type: ignore[no-untyped-def]
+        cmap = original(self, spec, strict)
+        if not isinstance(cmap, CMap) or cmap.code2cid:
+            return cmap
+        try:
+            encoding = resolve1(spec.get("Encoding"))
+            if not isinstance(encoding, PDFStream):
+                return cmap
+            # Check the raw size before decompressing as well.
+            if len(encoding.rawdata or b"") > _MAX_CMAP_BYTES:
+                raise _CMapTooLarge("raw CMap stream too large")
+            embedded = _parse_embedded_cmap(encoding.get_data())
+        except Exception as exc:  # noqa: BLE001 — keep pdfminer's fallback
+            logger.debug("Embedded CMap not readable: %s", exc)
+            return cmap
+        return embedded if embedded.code2cid else cmap
+
+    return get_cmap_from_spec
+
+
+def _patch_cid_font(pdffont) -> bool:  # type: ignore[no-untyped-def]
+    """Install the wrapper on ``pdffont.PDFCIDFont``; False if the hook is gone."""
+    try:
+        original = pdffont.PDFCIDFont.get_cmap_from_spec
+        wrapped = _wrap_get_cmap_from_spec(original)
+    except (ImportError, AttributeError) as exc:
+        # A pdfminer update renamed the hook: only such PDFs stay unreadable.
+        logger.warning("Embedded CMap support unavailable: %s", exc)
+        return False
+    pdffont.PDFCIDFont.get_cmap_from_spec = wrapped
+    return True
+
+
+def _install_embedded_cmap_support() -> None:
+    """Teach pdfminer to read embedded encoding CMaps of CID fonts.
+
+    pdfminer only knows CMaps by name. comdirect PDFs embed their own CMap
+    (named "cmap"); pdfminer then falls back to an empty CMap, decodes no
+    character at all and the statement looks like a scan. Patched once per
+    process under a lock, because uploads are parsed in worker threads.
+    """
+    global _cmap_support_installed
+    with _cmap_support_lock:
+        if _cmap_support_installed:
+            return
+        _cmap_support_installed = True
+        try:
+            from pdfminer import pdffont
+        except ImportError as exc:
+            logger.warning("Embedded CMap support unavailable: %s", exc)
+            return
+        _patch_cid_font(pdffont)
+
+
+def _page_text(page) -> str:  # type: ignore[no-untyped-def]
+    """Text of one page; tighter word gaps for PDFs without space glyphs."""
+    chars = page.chars
+    spaces = sum(1 for char in chars if char.get("text") == " ")
+    if chars and spaces < len(chars) * _SPACELESS_RATIO:
+        return page.extract_text(x_tolerance=_SPACELESS_X_TOLERANCE) or ""
+    return page.extract_text() or ""
+
+
 def extract_lines(pdf_bytes: bytes) -> list[str]:
     """Liest den Text aller Seiten und liefert ihn zeilenweise.
 
@@ -137,6 +281,7 @@ def extract_lines(pdf_bytes: bytes) -> list[str]:
             "`docker compose up --build` ausführen."
         ) from exc
 
+    _install_embedded_cmap_support()
     lines: list[str] = []
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
@@ -145,8 +290,7 @@ def extract_lines(pdf_bytes: bytes) -> list[str]:
                     f"Das PDF hat zu viele Seiten (max. {MAX_PAGES})."
                 )
             for page in pdf.pages:
-                text = page.extract_text() or ""
-                lines.extend(text.splitlines())
+                lines.extend(_page_text(page).splitlines())
     except StatementParseError:
         raise
     except Exception as exc:  # noqa: BLE001 — pdfplumber/pdfminer werfen vielerlei

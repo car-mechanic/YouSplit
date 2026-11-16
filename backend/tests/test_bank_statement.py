@@ -14,6 +14,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bank_statement import (  # noqa: E402
     CATEGORY_FOOD,
+    _CMapTooLarge,
+    _page_text,
+    _parse_embedded_cmap,
+    _patch_cid_font,
+    _wrap_get_cmap_from_spec,
     classify,
     load_food_merchants,
     parse_lines,
@@ -109,6 +114,53 @@ class ParseLinesTest(unittest.TestCase):
             "Sparkasse Musterstadt",
         ]
         self.assertNotIn("Seite", parse_lines(lines).bookings[0].description)
+
+    def test_comdirect_finanzreport_layout(self) -> None:
+        # Made-up example in the comdirect "Finanzreport" layout: booking and
+        # value date on two lines, "Übertrag / Überweisung" as booking type,
+        # page footer with "USt-ID" before the next page header.
+        lines = [
+            "Finanzreport Nr. 7 per 01.06.2026 - Seite 2",
+            "Buchungstag Vorgang Auftraggeber/Empfänger Buchungstext Ausgang",
+            "Valuta Referenz IBAN/BIC Eingang",
+            "Alter Saldo 01.05.2026 +100,00",
+            "04.05.2026 Lastschrift / Lidl sagt Danke Lidl sagt Danke, Musterstadt DE -12,34",
+            "04.05.2026 Belastung Karte Nr. 1234 56XX XXXX 7890",
+            "ABC123 Kartenzahlung",
+            "05.05.2026 Übertrag / Erika Musterfrau Miete Mai -400,00",
+            "05.05.2026 Überweisung DE00000000000000000000 End-to-End-Ref.:",
+            "musterbank – Fusszeile USt-ID: DE000000000",
+            "12345 Musterstadt",
+            "Finanzreport Nr. 7 per 01.06.2026 - Seite 3",
+            "Buchungstag Vorgang Auftraggeber/Empfänger Buchungstext Ausgang",
+            "06.05.2026 Übertrag / Max Mustermann Lohn/Gehalt +1.500,00",
+            "06.05.2026 Überweisung End-to-End-Ref.: nicht angegeben",
+            "Neuer Saldo 01.06.2026 +1.187,66",
+        ]
+        result = parse_lines(lines)
+        bookings = result.bookings
+        self.assertEqual(
+            [b.amount for b in bookings], [-12.34, -400.00, 1500.00]
+        )
+        self.assertEqual(
+            [b.booking_date for b in bookings],
+            [date(2026, 5, 4), date(2026, 5, 5), date(2026, 5, 6)],
+        )
+        self.assertTrue(classify(bookings[0].description).is_food)
+        self.assertIn("Erika Musterfrau", bookings[1].description)
+        self.assertNotIn("USt-ID", bookings[1].description)
+        self.assertNotIn("Musterstadt", bookings[1].description)
+        self.assertFalse(result.warnings)
+        # Opening balance + bookings = closing balance
+        self.assertAlmostEqual(100.00 + sum(b.amount for b in bookings), 1187.66)
+
+    def test_uebertrag_ohne_schraegstrich_bleibt_saldozeile(self) -> None:
+        lines = [
+            "30.09.2026 Übertrag auf Blatt 2 1.234,56",
+            "01.09. Kartenzahlung REWE -9,99",
+        ]
+        bookings = parse_lines(lines).bookings
+        self.assertEqual([b.amount for b in bookings], [-9.99])
 
     def test_betrag_in_folgezeile(self) -> None:
         lines = ["01.09.2026 Kartenzahlung KAUFLAND", "Filiale 123", "-31,40"]
@@ -323,6 +375,127 @@ class ClassifyTest(unittest.TestCase):
         for text in ("Kartenzahlung HANS MEIER E.K. Stadt", "REWE Markt", "..."):
             with self.subTest(text=text):
                 self.assertEqual(classify(text, prepared), classify(text, rules))
+
+
+class _FakePage:
+    """Stands in for a pdfplumber page: records the x_tolerance used."""
+
+    def __init__(self, text: str) -> None:
+        self.chars = [{"text": ch} for ch in text]
+        self.tolerance: float | None = None
+
+    def extract_text(self, x_tolerance: float = 3) -> str:
+        self.tolerance = x_tolerance
+        return "text"
+
+
+class PdfExtractionTest(unittest.TestCase):
+    def test_embedded_cmap_is_parsed(self) -> None:
+        # Encoding CMap as embedded by comdirect (1-byte identity mapping)
+        data = (
+            b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap\n"
+            b"/CMapName /cmap def\n1 begincodespacerange\n<00> <FF>\n"
+            b"endcodespacerange\n1 begincidrange\n<00> <FF> 0\nendcidrange\n"
+            b"endcmap\n"
+        )
+        cmap = _parse_embedded_cmap(data)
+        self.assertEqual(list(cmap.decode(b"\x00\x41\xff")), [0, 0x41, 0xFF])
+        two_byte = _parse_embedded_cmap(
+            b"begincidchar\n<0102> 7\nendcidchar\n"
+        )
+        self.assertEqual(list(two_byte.decode(b"\x01\x02")), [7])
+
+    def test_embedded_cmap_ignores_oversized_ranges(self) -> None:
+        cmap = _parse_embedded_cmap(
+            b"begincidrange\n<00000000> <FFFFFFFF> 0\nendcidrange\n"
+        )
+        self.assertFalse(cmap.code2cid)
+
+    def test_embedded_cmap_with_too_many_codes_is_rejected(self) -> None:
+        # Many full 2-byte ranges: each one is allowed, together far too many.
+        data = b"begincidrange\n" + b"<0000> <FFFF> 0\n" * 50 + b"endcidrange\n"
+        with self.assertRaises(_CMapTooLarge):
+            _parse_embedded_cmap(data)
+        chars = b"begincidchar\n" + b"<41> 1\n" * 70_000 + b"endcidchar\n"
+        with self.assertRaises(_CMapTooLarge):
+            _parse_embedded_cmap(chars)
+
+    def test_embedded_cmap_stream_too_long_is_rejected(self) -> None:
+        with self.assertRaises(_CMapTooLarge):
+            _parse_embedded_cmap(b" " * 2_000_000)
+
+    def _hook(self, cmap, encoding):  # type: ignore[no-untyped-def]
+        """Wrapped hook whose pdfminer original returns ``cmap``."""
+        hook = _wrap_get_cmap_from_spec(lambda self, spec, strict: cmap)
+        return hook(None, {"Encoding": encoding}, False)
+
+    @staticmethod
+    def _stream(data: bytes):  # type: ignore[no-untyped-def]
+        from pdfminer.pdftypes import PDFStream
+
+        return PDFStream({}, data)
+
+    def test_hook_reads_embedded_cmap_for_empty_cmap(self) -> None:
+        from pdfminer.cmapdb import CMap
+
+        result = self._hook(
+            CMap(), self._stream(b"begincidchar\n<41> 5\nendcidchar\n")
+        )
+        self.assertEqual(list(result.decode(b"A")), [5])
+
+    def test_hook_keeps_known_and_non_empty_cmaps(self) -> None:
+        from pdfminer.cmapdb import CMap, IdentityCMap
+
+        stream = self._stream(b"begincidchar\n<41> 5\nendcidchar\n")
+        identity = IdentityCMap(WMode=0)
+        self.assertIs(self._hook(identity, stream), identity)
+        known = CMap()
+        known.code2cid[65] = 9
+        self.assertIs(self._hook(known, stream), known)
+
+    def test_hook_falls_back_on_oversized_or_broken_cmap(self) -> None:
+        from pdfminer.cmapdb import CMap
+
+        empty = CMap()
+        huge = self._stream(
+            b"begincidrange\n" + b"<0000> <FFFF> 0\n" * 50 + b"endcidrange\n"
+        )
+        self.assertIs(self._hook(empty, huge), empty)
+        self.assertIs(self._hook(empty, "/Identity-H"), empty)
+
+        class BrokenSpec:
+            def get(self, key):  # type: ignore[no-untyped-def]
+                raise ValueError("broken reference")
+
+        hook = _wrap_get_cmap_from_spec(lambda self, spec, strict: empty)
+        self.assertIs(hook(None, BrokenSpec(), False), empty)
+
+    def test_patch_without_hook_falls_back(self) -> None:
+        class FontWithoutHook:
+            pass
+
+        fake_module = type("pdffont", (), {"PDFCIDFont": FontWithoutHook})
+        with self.assertLogs("yousplit.bankstatement", "WARNING"):
+            self.assertFalse(_patch_cid_font(fake_module))
+        self.assertFalse(hasattr(FontWithoutHook, "get_cmap_from_spec"))
+
+    def test_patch_replaces_existing_hook(self) -> None:
+        class Font:
+            def get_cmap_from_spec(self, spec, strict):  # type: ignore[no-untyped-def]
+                return "original"
+
+        fake_module = type("pdffont", (), {"PDFCIDFont": Font})
+        self.assertTrue(_patch_cid_font(fake_module))
+        # Non-CMap results of the original pass through unchanged.
+        self.assertEqual(Font().get_cmap_from_spec({}, False), "original")
+
+    def test_tighter_word_gap_only_without_space_glyphs(self) -> None:
+        spaceless = _FakePage("LidlsagtDanke" * 20)
+        _page_text(spaceless)
+        self.assertLess(spaceless.tolerance, 3)
+        normal = _FakePage("Lidl sagt Danke " * 20)
+        _page_text(normal)
+        self.assertEqual(normal.tolerance, 3)
 
 
 class MerchantListTest(unittest.TestCase):
