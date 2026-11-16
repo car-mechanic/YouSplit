@@ -48,6 +48,13 @@ together by hand. It focuses on **well-known supermarkets, discounters,
 bakeries and butchers from Germany and Europe**, plus large chains from other
 countries.
 
+Owner-run markets that only appear under their company name (for example
+"Mueller e.K." or "Schmidt oHG") are detected by a heuristic. It needs a
+legal form (e.K., OHG, KG) plus a grocery word such as "Lebensmittel" or
+"SB-Markt", and an owner name in front of the legal form. A plain "Markt" or a
+missing owner name is not enough. DIY, electronics, furniture, car-related
+businesses, restaurants and similar trades are excluded.
+
 The list is certainly not complete. If your shop is missing, you can simply
 add it yourself. The format is explained at the top of the file.
 

@@ -189,6 +189,126 @@ class ClassifyTest(unittest.TestCase):
         ):
             self.assertIsNone(classify(text).category, text)
 
+    def test_edeka_rewe_without_chain_name(self) -> None:
+        # Abbreviations, formats, regional companies and independent merchants
+        for text, label in (
+            ("EDK SAGT DANKE 123", "Edeka"),
+            ("EDK MUELLER OHG", "Edeka"),
+            ("Kartenzahlung Zurheide Feine Kost Duesseldorf", "Edeka"),
+            ("nahkauf Bergheim", "Rewe"),
+            ("Lastschrift Nordbayern-Sachsen-Thüringen Stiftung", "Edeka"),
+            ("EDEKA Südwest Stiftung & Co. KG", "Edeka"),
+            ("REWE-Mokanski EH oHG Herne", "Rewe"),
+            ("NP-Markt 4711 Hannover", "Edeka"),
+            ("Simmel AG Chemnitz", "Edeka"),
+            ("Simmel-Center Zwickau", "Edeka"),
+            ("REWE Freidank oHG", "Rewe"),
+            ("Markant Markt Hamburg", "Markant"),
+        ):
+            with self.subTest(text=text):
+                result = classify(text)
+                self.assertTrue(result.is_food)
+                self.assertEqual(result.label, label)
+
+    def test_ambiguous_merchant_names_need_context(self) -> None:
+        # Edk only as a whole word; Markant/Simmel/Freidank only in fixed
+        # phrases; Kaiser's/Tengelmann no longer exist (since 2017).
+        for text in (
+            "EDKA Versand",
+            "Nord Immobilien GmbH",
+            "Markant Immobilien",
+            "Kaisers Kaffee",
+            "Tengelmann Verwaltung",
+            "Simmel Steuerberatung",
+            "Freidank Rechtsanwaelte",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(classify(text).category)
+
+    def test_owner_market_heuristic(self) -> None:
+        # Strong sector words like "Supermarkt" or "E-Center" are already in
+        # the merchant list; the heuristic covers the remaining formats.
+        self.assertTrue(classify("Max Mustermann e.K. Frischemarkt").is_food)
+        for text, label in (
+            ("Max Mustermann e.K. SB Markt", "Max Mustermann"),
+            ("Kartenzahlung 12.03 Hans Meier OHG Aktiv Markt", "Hans Meier"),
+            ("PayPal *Schulze e.Kfm. Nah-Markt", "Schulze"),
+            ("Mueller KG Frisch Markt", "Mueller"),
+            ("Frische Center Hieber Bauer KG", "Hieber Bauer"),
+            # Place names that merely contain a non-food stem
+            ("Greifenberg Weber e.K. SB Markt", "Greifenberg Weber"),
+            ("Blumenthal OHG Aktiv Markt", "Blumenthal"),
+            ("Schuhmacher e.K. SB Markt", "Schuhmacher"),
+        ):
+            with self.subTest(text=text):
+                result = classify(text)
+                self.assertTrue(result.is_food)
+                self.assertEqual(result.label, label)
+
+    def test_owner_market_heuristic_rejects_false_hits(self) -> None:
+        for text in (
+            "Media Markt Hamburg GmbH & Co. KG",
+            "Bauhaus GmbH & Co. KG Baumarkt",
+            "Mustermann e.K.",  # legal form without a sector word
+            "Elektro Markt Schmidt e.K.",
+            "Moebel Center Meier KG",
+            "Autohaus Center Huber GmbH & Co. KG",
+            "Hagebaumarkt Mueller KG Markt",
+            "Reifen Weber KG SB Markt",
+            "Blumenladen Weber e.K. SB Markt",
+            "Optiker Schulze OHG Nah Markt",
+            # A bare "Center" is not a grocery sector word
+            "Zahnarzt Center OHG",
+            "Dental Center OHG",
+            "Reha Center KG",
+            "Kosmetik Center e.K.",
+            "Hair Center e.K.",
+            "Matratzen Center KG",
+            "Bike Center KG",
+            "Copy Center e.K.",
+            "Sonnenstudio Center e.K.",
+            "Musik Center e.K.",
+            # A bare "Markt" needs a grocery hint
+            "Ford Markt KG",
+            "Max Mustermann e.K. Markt",
+            # GmbH/UG/AG are not owner-market legal forms
+            "Mustermann GmbH SB Markt",
+            "Mustermann UG Frische Center",
+            # A grocery hint only counts directly before "Markt"
+            "SB Waschanlage Mueller KG Markt",
+            "Schmidt KG Floh Markt SB",
+            "SB Tankcenter Meier KG Markt",
+            # Car wash, car parts, kiosk and TV shops are not groceries
+            "Waschstrasse Meier OHG SB Markt",
+            "Autoteile Frisch Markt Meier KG",
+            "Kiosk Nah Markt Meier e.K.",
+            "Fernsehtechnik Meier KG SB Markt",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(classify(text).category)
+
+    def test_owner_market_label_stops_at_sector_words(self) -> None:
+        # Sector words are not part of the owner's name; without a name
+        # left the heuristic gives up instead of inventing a title.
+        for text in (
+            "Kiosk Markt OHG",
+            "Kiosk SB Markt OHG",
+            "SB Markt e.K.",
+            "Markt e.K.",
+            "Frische Center OHG",
+            "Kartenzahlung Aktiv Markt KG",
+        ):
+            with self.subTest(text=text):
+                self.assertIsNone(classify(text).category)
+        result = classify("Nah Markt Meier e.K.")
+        self.assertTrue(result.is_food)
+        self.assertEqual(result.label, "Meier")
+
+    def test_user_rule_beats_heuristic(self) -> None:
+        rules = [("MUSTERMANN", "Sonstiges")]
+        result = classify("Max Mustermann e.K. SB Markt", rules)
+        self.assertEqual(result.category, "Sonstiges")
+
     def test_regel_hat_vorrang_und_laengstes_stichwort_gewinnt(self) -> None:
         rules = [("REWE", "Sonstiges"), ("MEIN LADEN", CATEGORY_FOOD)]
         self.assertEqual(classify("REWE Markt", rules).category, "Sonstiges")

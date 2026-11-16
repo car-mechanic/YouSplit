@@ -61,6 +61,71 @@ FRISCHEPARADIES
 FRISCHE PARADIES
 BRINKHUS
 
+# ---- Edeka: abbreviation and store formats -----------------------------------
+# Statements often show the format or "EDK" instead of the group name.
+EDK = Edeka                         # card terminal abbreviation; whole word only
+E AKTIV MARKT = Edeka
+E AKTIVMARKT = Edeka
+NP MARKT = Edeka                    # NP discount stores (Edeka Minden-Hannover)
+NP DISCOUNT = Edeka
+WEZ = Edeka                         # WEZ markets (Minden area)
+WEZ KARL PREUSS = Edeka
+HERKULES MARKT = Edeka              # "Herkules" alone is too common (bikes, construction)
+HERKULES EDEKA = Edeka
+HERKULES E CENTER = Edeka
+SCHECK IN CENTER = Edeka
+SCHECKIN = Edeka                    # "Scheck" alone is a surname
+DISKA = Edeka
+SIMMEL AG = Edeka                   # Edeka partner in Saxony/Bavaria; "Simmel" alone is a surname
+SIMMEL CENTER = Edeka
+
+# ---- Edeka: regional companies ------------------------------------------------
+# Generic parts like "NORD" or "RHEIN RUHR" only count together with EDEKA.
+EDEKA HESSENRING = Edeka
+EDEKA MINDEN = Edeka
+MINDEN HANNOVER = Edeka
+EDEKA NORD = Edeka
+NORDBAYERN SACHSEN THUERINGEN = Edeka
+EDEKA RHEIN RUHR = Edeka
+EDEKA SUEDBAYERN = Edeka
+EDEKA SUEDWEST = Edeka
+
+# ---- Edeka: large independent merchants (distinctive names only) ------------
+ZURHEIDE = Edeka
+UELTZHOEFER = Edeka
+ULTZHOFER = Edeka                   # umlauts dropped instead of expanded
+WUCHERPFENNIG = Edeka
+HIEBERS = Edeka
+HIEBER S FRISCHE CENTER = Edeka     # folded form of "Hieber's Frische Center"
+HIEBERS FRISCHE CENTER = Edeka
+EDEKA STRUVE = Edeka                # "Struve" alone is a common surname
+
+# ---- Rewe: formats, regional companies, independent merchants ---------------
+NAHKAUF = Rewe
+REWE PETZ = Rewe
+SANKTJOHANSER = Rewe
+SANKT JOHANSER = Rewe
+REWE DORTMUND = Rewe
+DORNSEIFER = Rewe
+DORNSEIFERS = Rewe
+REWE FREIDANK = Rewe                # "Freidank" alone is a surname
+MOKANSKI = Rewe
+RICHRATH SUPERMAERKTE = Rewe        # "Richrath" alone is also a district of Langenfeld
+REWE RICHRATH = Rewe
+REWE RAHMATI = Rewe                 # "Rahmati" alone is a common surname
+
+# ---- Other German chains ---------------------------------------------------------
+NETTO MARKEN DISCOUNT = Netto
+WASGAU
+FENEBERG
+MARKANT MARKT = Markant             # "Markant" alone is a common word (real estate, design)
+NAH UND FRISCH
+NAH & FRISCH
+BARTELS LANGNESS
+BUENTING
+HIT DOHLE
+TREFF 3000
+
 # ---- Deutschland: Bio, Reformhaus, Wochenmarkt -------------------------------
 DENNREE
 DENNS BIOMARKT
@@ -128,7 +193,6 @@ MPREIS
 UNIMARKT
 ADEG
 MERKUR MARKT
-NAHKAUF
 
 # ---- Schweiz / Liechtenstein --------------------------------------------------
 MIGROS

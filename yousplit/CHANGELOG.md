@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0
+- Bank statement import recognizes more grocery merchants: the abbreviation EDK
+  for Edeka, more Edeka and Rewe name formats, regional Edeka companies and
+  large independent retailers.
+- Owner-run markets that appear under their company name are now detected too:
+  a legal form (e.K., oHG, KG, ...) plus a grocery word such as "Markt" or
+  "Lebensmittel". DIY, electronics, furniture, restaurants and similar
+  businesses are excluded.
+
 ## 1.4.0
 - Neu: Drei-Punkte-Menü an jeder Liste in der Übersicht mit „Umbenennen“ und
   „Löschen“. Löschen entfernt die Liste samt Ausgaben für alle Personen.

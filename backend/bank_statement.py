@@ -538,15 +538,244 @@ def _display_name(word: str) -> str:
     return title
 
 
+# --- Owner-run markets (heuristic) ------------------------------------------
+# Independent Edeka/Rewe merchants often appear on statements only under their
+# own company ("Max Mustermann e.K.", "Mueller OHG"). A legal form alone says
+# nothing about the trade, so the heuristic needs a legal form AND a grocery
+# sector word. All phrases are in ``_fold`` form and match whole words only.
+#
+# Only sole-trader and partnership forms count (e.K., OHG, KG incl. GmbH & Co.
+# KG): Edeka and Rewe hand stores to independent merchants mostly in exactly
+# these forms. GmbH, UG and AG are deliberately left out. They are by far the
+# most common forms of every other kind of business (doctors' practices, studios,
+# service companies), so they would multiply false hits, while the few grocery
+# companies using them (e.g. Simmel AG) are named in ``food_merchants.txt``.
+_LEGAL_FORMS = ("GMBH CO KG", "E KFM", "E KFR", "E K", "OHG", "KG")
+# Sector words that identify a grocery store on their own. A bare "CENTER" is
+# not one of them: dentists, rehab, copy shops and studios all call themselves
+# "Center", so only the grocery formats "E Center"/"Frische Center" remain.
+_SECTOR_WORDS = (
+    "FRISCHE CENTER",
+    "E CENTER",
+    "AKTIV MARKT",
+    "FRISCHEMARKT",
+    "SUPERMARKT",
+    "LEBENSMITTEL",
+    "FEINKOST",
+)
+# A bare "MARKT" is just as ambiguous ("Ford Markt KG", "Kiosk Markt OHG"); it
+# only counts when one of these grocery hints directly precedes it ("SB Markt",
+# "Nah-Markt"). A hint elsewhere in the text ("SB Waschanlage ... Markt") says
+# nothing about the trade.
+_WEAK_SECTOR_WORD = "MARKT"
+_FOOD_HINTS = ("EDEKA", "REWE", "LEBENSMITTEL", "FRISCH", "NAH", "AKTIV", "SB")
+_WEAK_SECTOR_PHRASES = tuple(f"{hint} {_WEAK_SECTOR_WORD}" for hint in _FOOD_HINTS)
+# Words that describe the trade, not the owner. Walking back from the legal
+# form stops at them so "Kiosk Markt OHG" does not become the title "Kiosk Markt".
+_SECTOR_STOP_WORDS = frozenset(
+    word
+    for phrase in (*_SECTOR_WORDS, _WEAK_SECTOR_WORD, *_FOOD_HINTS)
+    for word in phrase.split()
+)
+# "MARKT"/"CENTER" are also used by DIY, electronics, furniture, car and other
+# non-food businesses. These stems match anywhere in a word (compounds like
+# "HAGEBAUMARKT"), so they must be long and distinctive.
+_NON_FOOD_STEMS = (
+    "BAUMARKT",
+    "BAUSTOFF",
+    "BAUZENTRUM",
+    "HEIMWERK",
+    "GARTENCENTER",
+    "GARTENMARKT",
+    "MEDIAMARKT",
+    "WERKZEUG",
+    "TANKSTELLE",
+    "AUTOHAUS",
+    "AUTOREIFEN",
+    "AUTOTEILE",
+    # Car washes. Not a bare "WASCH" prefix: family names like "Waschke".
+    "WASCHSTRASSE",
+    "WASCHANLAGE",
+    "WASCHPARK",
+    "WASCHCENTER",
+    "WASCHSALON",
+    "SANITAET",
+    "TIERBEDARF",
+    "TIERMARKT",
+    "ZOOFACH",
+    "SPIELWAREN",
+    "SPIELZEUG",
+    "MOBILFUNK",
+    "BUEROBEDARF",
+    "FLORISTIK",
+    # Eating out is not a grocery purchase.
+    "RESTAURANT",
+    "GASTSTAETTE",
+    "PIZZERIA",
+)
+# Mid-length stems only match at the start of a word ("ELEKTROMARKT"), not
+# inside one, so they do not hit unrelated names.
+_NON_FOOD_PREFIXES = (
+    "ELEKTRO",
+    "MOEBEL",
+    "KUECHEN",
+    "TEPPICH",
+    "FLIESEN",
+    "TAPETEN",
+    "APOTHEKE",
+    "TEXTIL",
+    "FAHRRAD",
+    "ZWEIRAD",
+    "FITNESS",
+    "COMPUTER",
+    "JUWELIER",
+    "PARFUEM",
+    "CAMPING",
+    "FERNSEH",
+    "KIOSK",
+    # Fuel stations ("Tankcenter", "Tankstation"); no common family name starts
+    # with "Tank".
+    "TANK",
+)
+# Short stems are also the start of place and family names ("GREIFENBERG",
+# "BLUMENTHAL", "SCHUHMACHER"). They only count as a whole word or followed by
+# a typical shop suffix ("BLUMENLADEN", "REIFENSERVICE", "OPTIKER").
+_NON_FOOD_SHORT_STEMS = (
+    "REIFEN",
+    "BLUMEN",
+    "BETTEN",
+    "OPTIK",
+    "SCHUH",
+    "FARBEN",
+    "TABAK",
+    "HANDY",
+)
+_SHOP_SUFFIXES = frozenset(
+    {
+        "", "E", "ER", "HAUS", "LADEN", "MARKT", "CENTER", "SHOP", "WELT",
+        "STUDIO", "HANDEL", "GESCHAEFT", "ZENTRUM", "SERVICE", "DIENST",
+        "BEDARF", "MODE", "WAREN", "STUBE", "BOERSE", "LAGER", "OUTLET",
+    }
+)
+# Short brand names and generic words: whole words only.
+_NON_FOOD_WORDS = (
+    "MEDIA MARKT",
+    "SATURN",
+    "EXPERT",
+    "EURONICS",
+    "OBI",
+    "HORNBACH",
+    "BAUHAUS",
+    "TOOM",
+    "HAGEBAU",
+    "IKEA",
+    "POCO",
+    "ROLLER",
+    "XXXLUTZ",
+    "FRESSNAPF",
+    "FUTTERHAUS",
+    "SHELL",
+    "ARAL",
+    "ESSO",
+    "JET",
+    "AGIP",
+    "AUTO",
+    "KFZ",
+    "MODE",
+    "SPORT",
+    "ZOO",
+    "HOTEL",
+    "DIGITAL",
+)
+# Booking prefixes that precede the merchant name; they must not end up in
+# the expense title.
+_LABEL_NOISE = frozenset(
+    {
+        "KARTENZAHLUNG", "LASTSCHRIFT", "BASISLASTSCHRIFT", "FOLGELASTSCHRIFT",
+        "ERSTLASTSCHRIFT", "UEBERWEISUNG", "DAUERAUFTRAG", "SEPA", "PAYPAL",
+        "GIROCARD", "DEBITK", "DEBIT", "VISA", "MASTERCARD", "MAESTRO", "EC",
+        "KARTE", "ZAHLUNG", "KAUF", "EINKAUF", "UMSATZ", "POS", "ELV", "OLV",
+        "APPLE", "GOOGLE", "PAY", "KONTAKTLOS", "NR", "VOM", "UHR", "EUR",
+    }
+)
+_OWNER_LABEL_MAX_WORDS = 3
+
+
+def _has_phrase(folded_text: str, phrases: tuple[str, ...]) -> str | None:
+    """First phrase that occurs as whole word(s) in the folded text."""
+    padded = f" {folded_text} "
+    return next((p for p in phrases if f" {p} " in padded), None)
+
+
+def _is_non_food(folded: str) -> bool:
+    """True if the booking names a non-food trade (DIY, car, florist, ...)."""
+    words = folded.split()
+    return (
+        any(stem in folded for stem in _NON_FOOD_STEMS)
+        or any(w.startswith(_NON_FOOD_PREFIXES) for w in words)
+        or any(
+            w.startswith(stem) and w[len(stem) :] in _SHOP_SUFFIXES
+            for w in words
+            for stem in _NON_FOOD_SHORT_STEMS
+        )
+        or _has_phrase(folded, _NON_FOOD_WORDS) is not None
+    )
+
+
+def _owner_market_label(folded: str) -> str | None:
+    """Heuristic for owner-run grocery markets; returns the expense title or
+    ``None``. Only called when neither a user rule nor the merchant list hit."""
+    legal_form = _has_phrase(folded, _LEGAL_FORMS)
+    if legal_form is None:
+        return None
+    has_sector = (
+        _has_phrase(folded, _SECTOR_WORDS) is not None
+        or _has_phrase(folded, _WEAK_SECTOR_PHRASES) is not None
+    )
+    if not has_sector or _is_non_food(folded):
+        return None
+
+    # The merchant name is what directly precedes the legal form ("Max
+    # Mustermann e.K."); walk back until a booking prefix, a number or a
+    # sector word.
+    words = folded.split()
+    form_words = legal_form.split()
+    start = next(
+        i
+        for i in range(len(words))
+        if words[i : i + len(form_words)] == form_words
+    )
+    name: list[str] = []
+    for word in reversed(words[:start]):
+        if (
+            word in _LABEL_NOISE
+            or word in _SECTOR_STOP_WORDS
+            or any(ch.isdigit() for ch in word)
+        ):
+            break
+        name.insert(0, word)
+        if len(name) == _OWNER_LABEL_MAX_WORDS:
+            break
+    if not name:
+        # Without an owner name ("SB Markt e.K.") the booking is too vague to
+        # file automatically; fail closed and let the user add a rule.
+        return None
+    label = _display_name(" ".join(name))
+    logger.debug("Owner-market heuristic matched: %r", label)
+    return label
+
+
 def classify(
     description: str, rules: list[tuple[str, str]] | None = None
 ) -> Classification:
-    """Ordnet eine Buchung einer Kategorie zu.
+    """Assign a category to a booking.
 
-    ``rules`` sind die gelernten ``CategoryRule``-Paare ``(Stichwort, Kategorie)``
-    der Liste. Sie haben **Vorrang** vor der Haendlerliste ``food_merchants.txt``
-    (so kann ein Nutzer z. B. "REWE" bewusst anders einordnen); bei mehreren
-    Treffern gewinnt das laengste Stichwort. Ohne Treffer: ``category=None``.
+    ``rules`` are the list's learned ``CategoryRule`` pairs ``(keyword,
+    category)``. They take **precedence** over ``food_merchants.txt`` so a user
+    can deliberately file e.g. "REWE" elsewhere; among several hits the longest
+    keyword wins. The owner-market heuristic (legal form + grocery sector word,
+    see ``_owner_market_label``) is the last resort because it is the least
+    certain. No hit: ``category=None``.
     """
     folded = _fold(description)
 
@@ -568,6 +797,10 @@ def classify(
             best = (len(entry.keyword), entry.display or _display_name(word))
     if best is not None:
         return Classification(category=CATEGORY_FOOD, label=best[1])
+
+    owner_label = _owner_market_label(folded)
+    if owner_label is not None:
+        return Classification(category=CATEGORY_FOOD, label=owner_label)
     return Classification(category=None, label=None)
 
 
