@@ -73,6 +73,9 @@ _BLOCK_END_RE = re.compile(
     rf"KONTOSTAND|SALDO|{_CARRY_OVER}|KONTOAUSZUG|\bSEITE\s*\d|\bUST-ID\b",
     re.IGNORECASE,
 )
+# Heading of a statement attachment (Volksbank: "Anlage 1" after the closing
+# balance). It is followed by a bare document date that must not open a booking.
+_ATTACHMENT_RE = re.compile(r"^ANLAGE\s+\d+$", re.IGNORECASE)
 # Ohne Vorzeichen: diese Woerter deuten auf eine Gutschrift (Einnahme) hin.
 _CREDIT_HINTS = (
     "GUTSCHRIFT",
@@ -394,10 +397,13 @@ def parse_lines(lines: list[str]) -> ParseResult:
     blocks: list[_Block] = []
     current: _Block | None = None
 
+    previous = ""
     for raw in lines:
         line = raw.strip()
         if not line:
             continue
+        after_attachment = _ATTACHMENT_RE.match(previous) is not None
+        previous = line
 
         date_match, rest = _strip_leading_dates(line)
 
@@ -423,15 +429,16 @@ def parse_lines(lines: list[str]) -> ParseResult:
             continue
 
         # Dated line
-        if not rest and date_match.group(3) is not None and len(date_match.group(3)) == 4:
-            # A bare full date ("30.09.2026") is a document date, e.g. the
-            # Volksbank closing note ("Anlage 1") that itemises interest and fees
-            # already booked as "Abschluss". Opening a booking here would invent
-            # a phantom expense from the itemised amounts.
+        if not rest and after_attachment:
+            # A bare date right under an attachment heading is the date of the
+            # Volksbank closing note ("Anlage 1"), which itemises interest and
+            # fees already booked as "Abschluss". Opening a booking here would
+            # invent a phantom expense. Elsewhere a bare date may well start a
+            # booking whose text and amount follow on the next line.
             current = None
             continue
         if _BALANCE_RE.search(rest):
-            current = None  # Saldo-/Uebertragszeile, keine Buchung
+            current = None  # balance/carry-over line, not a booking
             continue
 
         amounts = list(_AMOUNT_RE.finditer(rest))

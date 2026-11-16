@@ -180,6 +180,22 @@ class ParseLinesTest(unittest.TestCase):
         self.assertEqual([b.amount for b in result.bookings], [-4.95])
         self.assertFalse(result.warnings)
 
+    def test_bare_date_then_booking_line(self) -> None:
+        # Some layouts put the date on its own line, text and amount below.
+        lines = ["03.09.2026", "Kartenzahlung KAUFLAND -31,40"]
+        bookings = parse_lines(lines).bookings
+        self.assertEqual([b.amount for b in bookings], [-31.40])
+        self.assertEqual(bookings[0].booking_date, date(2026, 9, 3))
+
+    def test_date_and_text_on_one_line_starts_booking(self) -> None:
+        lines = [
+            "Anlage 1",
+            "30.09.2026 Kartenzahlung KAUFLAND",
+            "-31,40",
+        ]
+        bookings = parse_lines(lines).bookings
+        self.assertEqual([b.amount for b in bookings], [-31.40])
+
     def test_betrag_in_folgezeile(self) -> None:
         lines = ["01.09.2026 Kartenzahlung KAUFLAND", "Filiale 123", "-31,40"]
         bookings = parse_lines(lines).bookings
